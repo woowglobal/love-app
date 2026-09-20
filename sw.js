@@ -1,5 +1,5 @@
 // LorVe — শুধু app-এর খোলস cache করে; ব্যবসার data সবসময় live আসে
-const SHELL = 'lorve-shell-v1';
+const SHELL = 'lorve-shell-v2';
 const FILES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
