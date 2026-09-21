@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>LorVe</title>
+<meta name="theme-color" content="#0d0d0f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="LorVe">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--ink:#1d1d1f;--sub:#86868b;--line:#e5e5ea;--bg:#f5f5f7;--accent:#0a84ff;--green:#248a3d;--red:#d70015;--orange:#b25000}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,"Noto Sans Bengali",sans-serif;
+  background:radial-gradient(900px 420px at 90% -10%,rgba(10,132,255,.10),transparent 60%),linear-gradient(#fbfbfd,#f4f4f7);
+  min-height:100vh;padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+.hide{display:none!important}
+header{position:sticky;top:0;z-index:20;color:#fff;padding:calc(14px + env(safe-area-inset-top)) 16px 14px;
+  background:linear-gradient(120deg,#000,#1d1d1f 55%,#2b2b31);display:flex;justify-content:space-between;align-items:center}
+header .co{font-size:17px;font-weight:700}
+header .who{font-size:11px;color:#a1a1a6}
+.wrap{max-width:860px;margin:0 auto;padding:14px 12px}
+.card{background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.04);border-radius:18px;padding:15px;margin-bottom:12px;box-shadow:0 8px 24px -18px rgba(0,0,0,.35)}
+.item{background:#fff;border-radius:16px;padding:12px 14px;margin-bottom:8px;box-shadow:0 6px 18px -16px rgba(0,0,0,.4);display:flex;gap:12px;align-items:center}
+.item .b{flex:1;min-width:0}
+.t{font-weight:600}
+.m{font-size:12px;color:var(--sub);margin-top:2px}
+.between{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.row{display:flex;gap:8px}.row>*{flex:1}
+label{display:block;font-size:11px;font-weight:600;color:var(--sub);margin:10px 0 4px;text-transform:uppercase}
+input,select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:11px;font-size:16px;background:#fff;font-family:inherit}
+input:focus{outline:none;border-color:var(--accent)}
+button{font-family:inherit;font-size:15px;font-weight:600;border:0;border-radius:11px;padding:12px 16px;background:var(--ink);color:#fff;cursor:pointer}
+button.sec{background:#fff;color:var(--ink);border:1px solid var(--line)}
+button.small{padding:7px 12px;font-size:13px}
+button:active{transform:scale(.98)}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.kpi{border-radius:18px;padding:14px;color:#fff}
+.kpi .l{font-size:11px;opacity:.85;font-weight:600}
+.kpi .v{font-size:22px;font-weight:700;margin-top:4px}
+.pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px}
+.pill.ok{background:#e6f5ec;color:var(--green)}.pill.low{background:#fff3e5;color:var(--orange)}.pill.out{background:#fdecee;color:var(--red)}
+.thumb{width:46px;height:46px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 46px;object-fit:cover}
+nav{position:fixed;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(4,1fr);z-index:30;
+  background:rgba(252,252,253,.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-top:1px solid var(--line);padding:7px 4px calc(8px + env(safe-area-inset-bottom))}
+nav button{background:none;color:var(--sub);font-size:10px;padding:3px;display:flex;flex-direction:column;align-items:center;gap:3px}
+nav button .i{font-size:20px}
+nav button.on{color:var(--ink)}
+.login{max-width:360px;margin:12vh auto 0;padding:0 18px}
+.err{background:#fdecee;color:var(--red);padding:10px 12px;border-radius:10px;font-size:13px;margin-top:10px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:40;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--bg);width:100%;max-width:860px;max-height:92vh;overflow:auto;border-radius:22px 22px 0 0;padding:16px 14px calc(26px + env(safe-area-inset-bottom))}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom));background:#1d1d1f;color:#fff;padding:10px 16px;border-radius:99px;font-size:13px;z-index:60}
+.speed{position:fixed;right:10px;top:calc(70px + env(safe-area-inset-top));font-size:10px;background:rgba(0,0,0,.7);color:#6bff9a;padding:3px 8px;border-radius:99px;z-index:25}
+</style>
+</head>
+<body>
+
+<div id="login" class="login">
+  <div style="text-align:center;margin-bottom:18px">
+    <div style="font-size:26px;font-weight:800;letter-spacing:-.5px">LorVe</div>
+    <div style="color:var(--sub);font-size:13px">Business Control</div>
+  </div>
+  <div class="card">
+    <label>Email</label><input id="lg-email" type="email" autocomplete="username">
+    <label>Password</label><input id="lg-pass" type="password" autocomplete="current-password">
+    <div style="margin-top:14px"><button id="lg-btn" style="width:100%">Login</button></div>
+    <div id="lg-err" class="err hide"></div>
+  </div>
+</div>
+
+<div id="app" class="hide">
+  <header>
+    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div></div>
+    <button class="small sec" onclick="logout()">Logout</button>
+  </header>
+  <div class="speed hide" id="speed"></div>
+  <div class="wrap" id="view"></div>
+  <nav id="nav">
+    <button data-v="home" onclick="go('home')"><span class="i">🏠</span>Home</button>
+    <button data-v="stock" onclick="go('stock')"><span class="i">📦</span>Stock</button>
+    <button data-v="orders" onclick="go('orders')"><span class="i">🧾</span>Orders</button>
+    <button data-v="more" onclick="go('more')"><span class="i">⋯</span>আরও</button>
+  </nav>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://tgpyvfrchfirwgpijlif.supabase.co';
+var SUPABASE_KEY = 'sb_publishable_Ef_qMomdNTGYd1DtHUoC5A_CuBIguaJ';
+var db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { db: { schema: 'lorve' } });
+
+var S = { user: null, staff: null, view: 'home', products: [] };
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function money(n){ n = Math.round(Number(n)||0); return (n<0?'-':'') + '৳' + Math.abs(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function toast(t){ var d=document.createElement('div'); d.className='toast'; d.textContent=t; document.body.appendChild(d); setTimeout(function(){ d.remove(); }, 2800); }
+
+async function timed(label, promise){
+  var t0 = performance.now();
+  var r = await promise;
+  var ms = Math.round(performance.now() - t0);
+  var s = el('speed'); s.textContent = label + ' · ' + ms + 'ms'; s.classList.remove('hide');
+  clearTimeout(S.sp); S.sp = setTimeout(function(){ s.classList.add('hide'); }, 2500);
+  if (r.error) throw r.error;
+  return r.data;
+}
+
+el('lg-btn').onclick = async function(){
+  var e = el('lg-email').value.trim(), p = el('lg-pass').value;
+  el('lg-err').classList.add('hide');
+  var r = await db.auth.signInWithPassword({ email: e, password: p });
+  if (r.error){ el('lg-err').textContent = 'Email বা password ভুল'; el('lg-err').classList.remove('hide'); return; }
+  start();
+};
+async function logout(){ await db.auth.signOut(); location.reload(); }
+
+async function start(){
+  var s = await db.auth.getSession();
+  if (!s.data.session){ el('login').classList.remove('hide'); el('app').classList.add('hide'); return; }
+  S.user = s.data.session.user;
+  var st = await db.from('staff').select('*').eq('id', S.user.id).maybeSingle();
+  if (!st.data){
+    el('login').classList.remove('hide'); el('app').classList.add('hide');
+    el('lg-err').innerHTML = 'Login হয়েছে, কিন্তু আপনাকে এখনো টিমে যোগ করা হয়নি।<br>Admin-কে বলুন।';
+    el('lg-err').classList.remove('hide');
+    return;
+  }
+  S.staff = st.data;
+  el('login').classList.add('hide'); el('app').classList.remove('hide');
+  el('h-who').textContent = (S.staff.name || S.staff.email) + ' · ' + S.staff.board;
+  go('home');
+}
+
+function go(v){
+  S.view = v;
+  document.querySelectorAll('nav button').forEach(function(b){ b.classList.toggle('on', b.dataset.v === v); });
+  window.scrollTo(0, 0);
+  ({ home: vHome, stock: vStock, orders: vOrders, more: vMore })[v]();
+}
+
+async function vHome(){
+  el('view').innerHTML = '<div class="m">লোড হচ্ছে…</div>';
+  try {
+    var stock = await timed('স্টক', db.from('v_stock').select('sku,stock,cost_price,stock_status'));
+    var today = new Date().toISOString().slice(0,10);
+    var orders = await timed('অর্ডার', db.from('v_orders').select('id,grand_total,profit').eq('order_date', today));
+    var value = stock.reduce(function(a,x){ return a + Math.max(0,x.stock) * (x.cost_price||0); }, 0);
+    var low = stock.filter(function(x){ return x.stock_status !== 'OK'; }).length;
+    var sales = orders.reduce(function(a,x){ return a + (x.grand_total||0); }, 0);
+    el('view').innerHTML =
+      '<div class="kpis">' +
+      kpi('💰 আজকের বিক্রি', money(sales), 'linear-gradient(135deg,#0A84FF,#0060df)') +
+      kpi('🧾 আজকের অর্ডার', orders.length, 'linear-gradient(135deg,#5E5CE6,#3634a3)') +
+      kpi('📦 প্রোডাক্ট', stock.length, 'linear-gradient(135deg,#30D158,#1a8c3a)') +
+      kpi('⚠️ স্টক কম', low, 'linear-gradient(135deg,#FF9F0A,#c96f00)') +
+      '</div>' +
+      '<div class="card"><div class="between"><span class="m">মোট স্টক ভ্যালু</span><b>' + money(value) + '</b></div></div>' +
+      '<div class="card m" style="line-height:1.7">✅ নতুন database-এ চলছে। উপরে ডানে সবুজ লেখায় দেখুন প্রতিটি তথ্য আনতে কত মিলিসেকেন্ড লাগছে।</div>';
+  } catch(e){ el('view').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
+}
+function kpi(l, v, bg){ return '<div class="kpi" style="background:' + bg + '"><div class="l">' + l + '</div><div class="v">' + esc(v) + '</div></div>'; }
+
+async function vStock(){
+  el('view').innerHTML =
+    '<div class="card"><input id="q" placeholder="🔍 প্রোডাক্ট / SKU" oninput="drawStock()">' +
+    '<div style="margin-top:10px"><button style="width:100%" onclick="formProduct()">➕ নতুন প্রোডাক্ট</button></div></div>' +
+    '<div id="list" class="m">লোড হচ্ছে…</div>';
+  try {
+    S.products = await timed('স্টক', db.from('v_stock').select('*').order('name'));
+    drawStock();
+  } catch(e){ el('list').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
+}
+function drawStock(){
+  var q = (el('q') && el('q').value || '').toLowerCase();
+  var rows = S.products.filter(function(x){ return !q || (x.name + ' ' + x.sku).toLowerCase().indexOf(q) >= 0; });
+  el('list').innerHTML = rows.length ? rows.map(function(x){
+    var cls = x.stock_status === 'Out' ? 'out' : (x.stock_status === 'Low' ? 'low' : 'ok');
+    var lab = x.stock_status === 'Out' ? 'শেষ' : (x.stock_status === 'Low' ? 'কম' : 'আছে');
+    return '<div class="item">' +
+      (x.image_url ? '<img class="thumb" src="' + esc(x.image_url) + '">' : '<div class="thumb">📦</div>') +
+      '<div class="b"><div class="between"><span class="t">' + esc(x.name) + '</span><b>' + x.stock + '</b></div>' +
+      '<div class="between"><span class="m">' + esc(x.sku) + ' · ' + money(x.sale_price) + '</span>' +
+      '<span class="pill ' + cls + '">' + lab + '</span></div></div></div>';
+  }).join('') : '<div class="card m">এখনো কোনো প্রোডাক্ট নেই — উপরে ➕ দিয়ে যোগ করুন</div>';
+}
+function formProduct(){
+  modal('<h3 style="margin:0 0 10px">নতুন প্রোডাক্ট</h3><div class="card">' +
+    '<label>নাম</label><input id="np-name" placeholder="Fish Oil">' +
+    '<div class="m" style="margin-top:6px">SKU নিজে থেকে তৈরি হবে (যেমন FIS-001)</div>' +
+    '<div class="row"><div><label>বিক্রয় দাম</label><input id="np-price" inputmode="decimal"></div>' +
+    '<div><label>ওজন (গ্রাম)</label><input id="np-w" inputmode="numeric"></div></div>' +
+    '<div class="row"><div><label>রিঅর্ডার লেভেল</label><input id="np-re" inputmode="numeric" value="10"></div>' +
+    '<div><label>বর্তমান স্টক</label><input id="np-open" inputmode="numeric" value="0"></div></div>' +
+    '<div style="margin-top:14px"><button style="width:100%" onclick="saveProduct()">সেভ</button></div></div>');
+}
+async function saveProduct(){
+  var name = el('np-name').value.trim();
+  if (!name){ toast('নাম দিন'); return; }
+  try {
+    var r = await timed('সেভ', db.from('products').insert({
+      name: name,
+      sale_price: Number(el('np-price').value) || 0,
+      unit_weight_g: Number(el('np-w').value) || null,
+      reorder_level: Number(el('np-re').value) || 10,
+      opening_stock: Number(el('np-open').value) || 0
+    }).select('sku').single());
+    closeModal(); toast('✅ ' + r.sku + ' তৈরি হয়েছে'); vStock();
+  } catch(e){ toast('⚠️ ' + e.message); }
+}
+
+function vOrders(){ el('view').innerHTML = '<div class="card m">🧾 Orders — পরের ধাপে আসছে</div>'; }
+function vMore(){ el('view').innerHTML = '<div class="card m">Buy · Delivery · Money · People · Report · Settings — ধাপে ধাপে আসছে</div>'; }
+
+function modal(html){
+  closeModal();
+  var d = document.createElement('div'); d.className = 'modal'; d.id = 'modal';
+  d.innerHTML = '<div class="sheet"><div style="text-align:right"><button class="small sec" onclick="closeModal()">✕ বন্ধ</button></div>' + html + '</div>';
+  d.onclick = function(e){ if (e.target === d) closeModal(); };
+  document.body.appendChild(d);
+}
+function closeModal(){ var x = el('modal'); if (x) x.remove(); }
+
+start();
+</script>
+</body>
+</html>
