@@ -2,7 +2,7 @@
 <html lang="bn">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>LorVe</title>
 <meta name="theme-color" content="#0d0d0f">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -54,13 +54,15 @@ nav button.on{color:var(--ink)}
 .sheet{background:var(--bg);width:100%;max-width:860px;max-height:92vh;overflow:auto;border-radius:22px 22px 0 0;padding:16px 14px calc(26px + env(safe-area-inset-bottom))}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom));background:#1d1d1f;color:#fff;padding:10px 16px;border-radius:99px;font-size:13px;z-index:60}
 .speed{position:fixed;right:10px;top:calc(70px + env(safe-area-inset-top));font-size:10px;background:rgba(0,0,0,.7);color:#6bff9a;padding:3px 8px;border-radius:99px;z-index:25}
+
+.module-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:18px}.module{background:white;color:var(--ink);border:1px solid var(--line);text-align:left;padding:22px}.module span{display:block;font-size:12px;color:var(--sub);margin-top:12px}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-space:nowrap}th{color:var(--sub);font-size:11px}button:disabled{opacity:.4;cursor:default}@media(min-width:1000px){.wrap{max-width:1180px}.module-grid{grid-template-columns:repeat(3,1fr)}}
 </style>
 </head>
 <body>
 
 <div id="login" class="login">
   <div style="text-align:center;margin-bottom:18px">
-    <div style="font-size:26px;font-weight:800;letter-spacing:-.5px">LorVe</div>
+    <div style="font-size:26px;font-weight:800;letter-spacing:-.5px">LorVe</div><div class="m">v2.1 · Workspace Preview</div>
     <div style="color:var(--sub);font-size:13px">Business Control</div>
   </div>
   <div class="card">
@@ -73,7 +75,7 @@ nav button.on{color:var(--ink)}
 
 <div id="app" class="hide">
   <header>
-    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div></div>
+    <div><div class="co" id="h-co">LorVe <span style="font-size:10px;color:#9acbff">v2.1 · Test</span></div><div class="who" id="h-who"></div></div>
     <button class="small sec" onclick="logout()">Logout</button>
   </header>
   <div class="speed hide" id="speed"></div>
@@ -121,7 +123,8 @@ async function start(){
   if (!s.data.session){ el('login').classList.remove('hide'); el('app').classList.add('hide'); return; }
   S.user = s.data.session.user;
   var st = await db.from('staff').select('*').eq('id', S.user.id).maybeSingle();
-  if (!st.data){
+  if(st.error){ el('lg-err').textContent=st.error.message; el('lg-err').classList.remove('hide'); return; }
+  if (!st.data || st.data.status !== 'Active'){
     el('login').classList.remove('hide'); el('app').classList.add('hide');
     el('lg-err').innerHTML = 'Login হয়েছে, কিন্তু আপনাকে এখনো টিমে যোগ করা হয়নি।<br>Admin-কে বলুন।';
     el('lg-err').classList.remove('hide');
@@ -134,7 +137,7 @@ async function start(){
 }
 
 function go(v){
-  S.view = v;
+  S.view = v; ++listRequest; closeModal();
   document.querySelectorAll('nav button').forEach(function(b){ b.classList.toggle('on', b.dataset.v === v); });
   window.scrollTo(0, 0);
   ({ home: vHome, stock: vStock, orders: vOrders, more: vMore })[v]();
@@ -144,8 +147,8 @@ async function vHome(){
   el('view').innerHTML = '<div class="m">লোড হচ্ছে…</div>';
   try {
     var stock = await timed('স্টক', db.from('v_stock').select('sku,stock,cost_price,stock_status'));
-    var today = new Date().toISOString().slice(0,10);
-    var orders = await timed('অর্ডার', db.from('v_orders').select('id,grand_total,profit').eq('order_date', today));
+    var today = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dhaka',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    var orders = await timed('অর্ডার', db.from('v_orders').select('id,grand_total,status').eq('order_date', today).not('status','in','(Cancelled,Returned)'));
     var value = stock.reduce(function(a,x){ return a + Math.max(0,x.stock) * (x.cost_price||0); }, 0);
     var low = stock.filter(function(x){ return x.stock_status !== 'OK'; }).length;
     var sales = orders.reduce(function(a,x){ return a + (x.grand_total||0); }, 0);
@@ -156,8 +159,8 @@ async function vHome(){
       kpi('📦 প্রোডাক্ট', stock.length, 'linear-gradient(135deg,#30D158,#1a8c3a)') +
       kpi('⚠️ স্টক কম', low, 'linear-gradient(135deg,#FF9F0A,#c96f00)') +
       '</div>' +
-      '<div class="card"><div class="between"><span class="m">মোট স্টক ভ্যালু</span><b>' + money(value) + '</b></div></div>' +
-      '<div class="card m" style="line-height:1.7">✅ নতুন database-এ চলছে। উপরে ডানে সবুজ লেখায় দেখুন প্রতিটি তথ্য আনতে কত মিলিসেকেন্ড লাগছে।</div>';
+      '<div class="card"><div class="between"><span class="m">মোট স্টক ভ্যালু</span><b>' + 'হিসাব সংশোধনাধীন' + '</b></div></div>' +
+      '<div class="card m" style="line-height:1.7">v2.1 · Orders এবং আরও মেনুতে নতুন তালিকা দেখুন। Dashboard বর্তমান database ফলাফল দেখায়; পূর্ণ reconciliation এখনো বাকি।</div>';
   } catch(e){ el('view').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
 }
 function kpi(l, v, bg){ return '<div class="kpi" style="background:' + bg + '"><div class="l">' + l + '</div><div class="v">' + esc(v) + '</div></div>'; }
@@ -193,25 +196,75 @@ function formProduct(){
     '<div><label>ওজন (গ্রাম)</label><input id="np-w" inputmode="numeric"></div></div>' +
     '<div class="row"><div><label>রিঅর্ডার লেভেল</label><input id="np-re" inputmode="numeric" value="10"></div>' +
     '<div><label>বর্তমান স্টক</label><input id="np-open" inputmode="numeric" value="0"></div></div>' +
-    '<div style="margin-top:14px"><button style="width:100%" onclick="saveProduct()">সেভ</button></div></div>');
+    '<div style="margin-top:14px"><button style="width:100%" id="product-save" onclick="saveProduct()">সেভ</button></div></div>');
 }
 async function saveProduct(){
   var name = el('np-name').value.trim();
   if (!name){ toast('নাম দিন'); return; }
+  var saveBtn=el('product-save'); if(saveBtn.disabled)return;
+  var price=Number(el('np-price').value), weight=Number(el('np-w').value), qty=Number(el('np-open').value), reorder=Number(el('np-re').value);
+  if(![price,weight,qty,reorder].every(function(n){return Number.isFinite(n)&&n>=0;}) || !Number.isInteger(qty) || !Number.isInteger(reorder)){toast('সঠিক non-negative সংখ্যা দিন; stock ও reorder পূর্ণসংখ্যা হতে হবে');return;}
+  saveBtn.disabled=true;
   try {
     var r = await timed('সেভ', db.from('products').insert({
       name: name,
       sale_price: Number(el('np-price').value) || 0,
       unit_weight_g: Number(el('np-w').value) || null,
-      reorder_level: Number(el('np-re').value) || 10,
+      reorder_level: el('np-re').value.trim()==='' ? 10 : Number(el('np-re').value),
       opening_stock: Number(el('np-open').value) || 0
     }).select('sku').single());
     closeModal(); toast('✅ ' + r.sku + ' তৈরি হয়েছে'); vStock();
-  } catch(e){ toast('⚠️ ' + e.message); }
+  } catch(e){ toast('⚠️ ' + e.message); } finally { if(saveBtn.isConnected)saveBtn.disabled=false; }
 }
 
-function vOrders(){ el('view').innerHTML = '<div class="card m">🧾 Orders — পরের ধাপে আসছে</div>'; }
-function vMore(){ el('view').innerHTML = '<div class="card m">Buy · Delivery · Money · People · Report · Settings — ধাপে ধাপে আসছে</div>'; }
+var listConfig = {
+ orders: {title:'Orders',table:'v_orders',sort:'order_date',cols:[['id','Order'],['order_date','Date'],['customer_name','Customer'],['status','Status'],['grand_total','Total','money'],['paid','Paid','money'],['due','Due','money']]},
+ shipments: {title:'Shipments',table:'shipments',sort:'order_date',cols:[['shipment_no','Shipment'],['order_date','Date'],['origin','Origin'],['status','Status'],['currency','Currency'],['fx_rate','FX rate'],['rate_per_kg','৳ / kg']]},
+ customers: {title:'Customers',table:'customers',sort:'created_at',cols:[['id','ID'],['name','Name'],['phone','Phone'],['area','Area'],['type','Type'],['opening_due','Opening due','money'],['active','Active']]},
+ suppliers: {title:'Suppliers',table:'suppliers',sort:'created_at',cols:[['id','ID'],['name','Name'],['kind','Type'],['country','Country'],['phone','Phone'],['opening_due','Opening due','money'],['active','Active']]},
+ payments: {title:'Payments',table:'payments',sort:'pay_date',cols:[['id','ID'],['pay_date','Date'],['kind','Type'],['doc_id','Document'],['method','Method'],['account','Account'],['amount','Amount','money'],['fee','Fee','money']]},
+ deliveries: {title:'Delivery',table:'deliveries',sort:'created_at',cols:[['order_id','Order'],['courier','Courier'],['tracking_no','Tracking'],['status','Status'],['cod_amount','COD expected','money'],['cod_collected','COD collected','money'],['courier_fee','Courier fee','money']]}
+};
+var listPage = 0, listRows = [], listKey = '', listRequest = 0;
+function vOrders(){openList('orders',0);}
+function vMore(){
+ el('view').innerHTML='<h2>Workspace</h2><div class="module-grid">'+Object.keys(listConfig).map(function(k){return '<button class="module" data-module="'+k+'">'+listConfig[k].title+'<span>তালিকা দেখুন →</span></button>';}).join('')+'</div><div class="card m">এই সংস্করণে তালিকা ও order details দেখা যাবে। নতুন sale, shipment receive এবং payment entry পরের ধাপে যুক্ত হবে।</div>';
+ document.querySelectorAll('[data-module]').forEach(function(b){b.onclick=function(){openList(b.dataset.module,0);};});
+}
+async function openList(key,page){
+ var req=++listRequest, cfg=listConfig[key]; listKey=key; listPage=page;
+ el('view').innerHTML='<div class="between"><h2>'+cfg.title+'</h2><button class="small sec" id="list-back">সব মডিউল</button></div><div class="card"><input id="list-search" placeholder="এই পৃষ্ঠায় খুঁজুন…"><div id="list-body" style="margin-top:14px">লোড হচ্ছে…</div><div class="between" style="margin-top:14px"><button class="small sec" id="page-prev">← আগের</button><span class="m">পৃষ্ঠা '+(page+1)+' · সর্বোচ্চ ৫০টি</span><button class="small sec" id="page-next">পরের →</button></div></div>';
+ el('list-back').onclick=function(){go('more');};
+ el('page-prev').disabled=true; el('page-next').disabled=true;
+ try{
+  var fields=Array.from(new Set(cfg.cols.map(function(c){return c[0];}).concat(['id']))).join(',');
+  var r=await db.from(cfg.table).select(fields).order(cfg.sort,{ascending:false}).order('id',{ascending:false}).range(page*50,page*50+49);
+  if(req!==listRequest)return;
+  if(r.error)throw r.error;
+  listRows=r.data||[]; drawTable();
+  el('list-search').oninput=drawTable;
+  el('page-prev').disabled=page===0; el('page-next').disabled=listRows.length<50;
+  el('page-prev').onclick=function(){openList(key,page-1);};
+  el('page-next').onclick=function(){openList(key,page+1);};
+ }catch(e){if(req===listRequest&&el('list-body'))el('list-body').innerHTML='<div class="err">'+esc(e.message)+'</div>';}
+}
+function drawTable(){
+ var cfg=listConfig[listKey],q=el('list-search').value.toLowerCase();
+ var rows=listRows.filter(function(r){return cfg.cols.some(function(c){return String(r[c[0]]==null?'':r[c[0]]).toLowerCase().includes(q);});});
+ if(!rows.length){el('list-body').innerHTML='<div class="m">এই তালিকায় কোনো তথ্য পাওয়া যায়নি।</div>';return;}
+ el('list-body').innerHTML='<div class="table-scroll"><table><thead><tr>'+cfg.cols.map(function(c){return '<th>'+c[1]+'</th>';}).join('')+(listKey==='orders'?'<th>Details</th>':'')+'</tr></thead><tbody>'+rows.map(function(r,i){return '<tr>'+cfg.cols.map(function(c){var v=r[c[0]];return '<td>'+esc(v==null?'—':c[2]==='money'?money(v):typeof v==='boolean'?(v?'Yes':'No'):v)+'</td>';}).join('')+(listKey==='orders'?'<td><button class="small sec" data-order-index="'+i+'">দেখুন</button></td>':'')+'</tr>';}).join('')+'</tbody></table></div>';
+ document.querySelectorAll('[data-order-index]').forEach(function(b){b.onclick=function(){orderDetail(rows[Number(b.dataset.orderIndex)]);};});
+}
+async function orderDetail(order){
+ modal('<h3>Order '+esc(order.id)+'</h3><div id="order-detail">লোড হচ্ছে…</div>');
+ var target=el('order-detail');
+ try{
+  var r=await db.from('order_items').select('sku,batch_code,qty,unit_price').eq('order_id',order.id).order('id');
+  if(r.error)throw r.error;
+  if(!target.isConnected)return;
+  target.innerHTML='<div class="card"><b>'+esc(order.customer_name||'Customer not set')+'</b><div class="m">'+esc(order.order_date)+' · '+esc(order.status)+'</div></div><div class="table-scroll"><table><thead><tr><th>SKU / Batch</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>'+(r.data||[]).map(function(x){return '<tr><td>'+esc(x.sku)+'<div class="m">'+esc(x.batch_code||'—')+'</div></td><td>'+esc(x.qty)+'</td><td>'+money(x.unit_price)+'</td><td>'+money(Number(x.qty)*Number(x.unit_price))+'</td></tr>';}).join('')+'</tbody></table></div><div class="card" style="margin-top:12px">Total: <b>'+money(order.grand_total)+'</b> · Paid: <b>'+money(order.paid)+'</b> · Due: <b>'+money(order.due)+'</b></div><div class="m">Database-এর বর্তমান হিসাব দেখানো হচ্ছে। Return/COD হিসাবের সংশোধন এখনো বাকি।</div>';
+ }catch(e){if(target.isConnected)target.innerHTML='<div class="err">'+esc(e.message)+'</div>';}
+}
 
 function modal(html){
   closeModal();
