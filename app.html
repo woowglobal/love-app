@@ -175,7 +175,7 @@ nav button.on::after{content:"";position:absolute;bottom:-3px;width:18px;height:
   <div style="text-align:center;margin-bottom:18px">
     <div style="font-size:28px;font-weight:800;letter-spacing:-.6px">LorVe</div>
     <div style="color:var(--sub);font-size:13px">Business Control</div>
-    <div style="color:var(--sub);font-size:11px;margin-top:4px">version 16 · Accounts</div>
+    <div style="color:var(--sub);font-size:11px;margin-top:4px">version 17 · User board</div>
   </div>
   <div class="card" id="lg-box">
     <label>Email</label><input id="lg-email" type="email" autocomplete="username">
@@ -192,7 +192,7 @@ nav button.on::after{content:"";position:absolute;bottom:-3px;width:18px;height:
 <!-- ═════════ APP ═════════ -->
 <div id="app" class="hide">
   <header>
-    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div><div class="who" style="opacity:.6">v16</div></div>
+    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div><div class="who" style="opacity:.6">v17</div></div>
     <button class="small sec" onclick="logout()">Logout</button>
   </header>
   <div class="pres" id="pres"></div>
@@ -1581,64 +1581,126 @@ function stPw(){
 }
 async function changePass(){ if(el('np1').value.length<6){ toast('At least 6 characters'); return; } if(el('np1').value!==el('np2').value){ toast('Passwords do not match'); return; }
   var r=await db.auth.updateUser({password:el('np1').value}); toast(r.error?'⚠️ '+r.error.message:'✅ Password changed'); }
+var TQ='', TF='all';
+function initials(n){ return String(n||'?').trim().split(/\s+/).slice(0,2).map(function(x){return x[0];}).join('').toUpperCase(); }
+function boardScreens(b){ return (BOARDS[b]||[]).map(function(s){return SCREENS[s].t;}).join(' · '); }
 async function stTeam(){
   var t=await q('Team', db.from('staff').select('*').order('created_at'));
-  el('stb').innerHTML='<button class="full" style="margin-bottom:12px" onclick="formStaff()">➕ Add new staff</button>'+
-    '<div class="card m">Or staff can sign up from the login page <b>"New staff?"</b> can create an account → then activate them here</div>'+t.map(function(u){
-    var self=u.id===S.user.id, c=u.status==='Active'?'ok':(u.status==='Locked'?'low':'out');
-    return '<div class="card"><div class="between"><b>'+esc(u.name||u.email)+'</b><span class="pill '+c+'">'+esc(u.status)+'</span></div>'+
-      '<div class="m">'+esc(u.email)+' · '+esc(u.board)+(u.last_login?' · last login '+new Date(u.last_login).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}):'')+'</div>'+
-      (self?'<div class="m">(You — you cannot lock yourself)</div>':
-      '<label>Name</label><input id="tn-'+u.id+'" value="'+esc(u.name||'')+'">'+
-      '<div class="row"><select id="tb-'+u.id+'">'+opts(Object.keys(BOARDS),u.board)+'</select><select id="ts-'+u.id+'">'+opts(['Active','Locked','Blocked'],u.status)+'</select></div>'+
-      '<label>Extra / fewer screens (Empty = By board)</label><div style="display:flex;flex-wrap:wrap;gap:6px">'+Object.keys(SCREENS).map(function(sc){ var on=(u.screens||[]).indexOf(sc)>=0;
-        return '<label style="text-transform:none;margin:0;display:flex;gap:4px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:99px;padding:4px 10px;font-size:12px;color:var(--ink)"><input type="checkbox" class="tsc-'+u.id+'" value="'+sc+'" style="width:auto" '+(on?'checked':'')+'>'+SCREENS[sc].t+'</label>'; }).join('')+'</div>'+
-      '<button class="full sec" style="margin-top:10px" onclick="saveStaff(\''+u.id+'\')">Save</button>')+'</div>'; }).join('');
+  S.team=t;
+  var n={all:t.length,Active:0,Locked:0,Blocked:0};
+  t.forEach(function(u){ n[u.status]=(n[u.status]||0)+1; });
+  var f=[['all','All ('+n.all+')'],['Locked','⏳ Waiting ('+(n.Locked||0)+')'],['Active','✅ Active ('+(n.Active||0)+')'],['Blocked','⛔ Blocked ('+(n.Blocked||0)+')']];
+  el('stb').innerHTML='<button class="full" style="margin-bottom:10px" onclick="formStaff()">➕ Add new staff</button>'+
+    '<div class="card" style="padding:12px"><input id="tq" placeholder="🔍 Search name or email" value="'+esc(TQ)+'" oninput="TQ=this.value;drawTeam()">'+
+    '<div class="chips" style="margin-top:8px">'+f.map(function(x){return '<button class="'+(TF===x[0]?'on':'')+'" onclick="TF=\''+x[0]+'\';drawTeam()">'+x[1]+'</button>';}).join('')+'</div></div>'+
+    '<div id="tlist"></div>';
+  drawTeam();
+}
+function drawTeam(){
+  var s=(TQ||'').toLowerCase();
+  var rows=(S.team||[]).filter(function(u){
+    if(TF!=='all' && u.status!==TF) return false;
+    return !s || ((u.name||'')+' '+u.email).toLowerCase().indexOf(s)>=0;
+  });
+  if(TF==='all') rows.sort(function(a,b){ var o={Locked:0,Active:1,Blocked:2}; return (o[a.status]-o[b.status]) || String(a.name||a.email).localeCompare(String(b.name||b.email)); });
+  el('tlist').innerHTML = rows.length ? rows.map(function(u){
+    var me=u.id===S.user.id, cls=u.status==='Active'?'ok':(u.status==='Locked'?'low':'out');
+    var lab=u.status==='Active'?'Active':(u.status==='Locked'?'Waiting':'Blocked');
+    var admin=u.board==='Admin board';
+    return '<div class="card" style="padding:14px">'+
+      '<div style="display:flex;gap:12px;align-items:center">'+
+      '<div class="thumb" style="border-radius:50%;background:linear-gradient(135deg,'+(admin?'#1f7a6d,#123b36':'#8fb3a0,#6f9577')+');color:#fff;font-weight:800;font-size:15px;box-shadow:none">'+esc(initials(u.name||u.email))+'</div>'+
+      '<div style="flex:1;min-width:0"><div class="between"><span class="t">'+esc(u.name||u.email.split('@')[0])+(me?' <span class="m">(you)</span>':'')+'</span><span class="pill '+cls+'">'+lab+'</span></div>'+
+      '<div class="m" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(u.email)+'</div>'+
+      '<div class="m">'+(admin?'👑 ':'')+esc(u.board)+(u.screens&&u.screens.length?' · custom screens':'')+(u.last_login?' · last login '+nice(u.last_login):' · never logged in')+'</div></div></div>'+
+      (me?'':'<div class="row" style="margin-top:10px;flex-wrap:wrap;gap:6px">'+
+        (u.status!=='Active'?'<button class="small" onclick="setStaff(\''+u.id+'\',\'Active\')">✅ '+(u.status==='Locked'?'Approve':'Activate')+'</button>':'')+
+        (u.status==='Active'?'<button class="small sec" onclick="setStaff(\''+u.id+'\',\'Locked\')">🔒 Lock</button>':'')+
+        '<button class="small sec" onclick="editStaff(\''+u.id+'\')">✏️ Edit</button>'+
+        '<button class="small sec" onclick="resetStaff(\''+esc(u.email)+'\')">🔑 Reset</button>'+
+        '<button class="small sec" onclick="inviteStaff(\''+u.id+'\')">📧 Invite</button>'+
+        (u.status!=='Blocked'?'<button class="small sec" style="color:var(--red)" onclick="setStaff(\''+u.id+'\',\'Blocked\')">⛔ Block</button>':'')+
+        '</div>')+'</div>'; }).join('')
+    : '<div class="card m">Nobody in this group</div>';
+}
+async function setStaff(id, st){
+  var u=(S.team||[]).filter(function(x){return x.id===id;})[0]||{};
+  if(st!=='Active' && !confirm((st==='Locked'?'Lock':'Block')+' '+(u.name||u.email)+'?')) return;
+  try{ await q('Team', db.from('staff').update({status:st}).eq('id',id)); toast(st==='Active'?'✅ Activated':(st==='Locked'?'🔒 Locked':'⛔ Blocked')); stTeam(); }catch(e){ fail(e); }
+}
+function editStaff(id){
+  var u=(S.team||[]).filter(function(x){return x.id===id;})[0]; if(!u) return;
+  modal('<h3 style="margin:0 0 4px">'+esc(u.name||u.email)+'</h3><div class="m" style="margin-bottom:10px">'+esc(u.email)+'</div>'+
+    '<div class="card"><label>Name</label><input id="ed-name" value="'+esc(u.name||'')+'">'+
+    '<label>Board</label><select id="ed-board" onchange="el(\'ed-hint\').textContent=boardScreens(this.value)">'+opts(Object.keys(BOARDS),u.board)+'</select>'+
+    '<div class="m" id="ed-hint" style="margin-top:6px">'+esc(boardScreens(u.board))+'</div>'+
+    '<label>Extra / fewer screens (empty = by board)</label><div style="display:flex;flex-wrap:wrap;gap:6px">'+Object.keys(SCREENS).map(function(sc){ var on=(u.screens||[]).indexOf(sc)>=0;
+      return '<label style="text-transform:none;margin:0;display:flex;gap:5px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:99px;padding:5px 11px;font-size:12px;color:var(--ink)"><input type="checkbox" class="ed-sc" value="'+sc+'" style="width:auto" '+(on?'checked':'')+'>'+SCREENS[sc].i+' '+SCREENS[sc].t+'</label>'; }).join('')+'</div>'+
+    '<label>Status</label><select id="ed-st">'+opts(['Active','Locked','Blocked'],u.status)+'</select></div>'+
+    '<button class="full" onclick="saveStaff(\''+id+'\')">Save</button>');
+}
+async function resetStaff(email){
+  if(!confirm('Send a password reset link to '+email+'?')) return;
+  var r=await db.auth.resetPasswordForEmail(email,{ redirectTo: location.href.split('#')[0].split('?')[0] });
+  toast(r.error?('⚠️ '+r.error.message):'📧 Reset link sent to '+email);
+}
+async function inviteStaff(id){
+  var u=(S.team||[]).filter(function(x){return x.id===id;})[0]; if(!u) return;
+  var link=location.href.split('?')[0].split('#')[0];
+  var msg='Assalamu Alaikum '+(u.name||'')+',\n'+(S.settings.company_name||'LorVe')+' app account is ready ✅\n\nLink: '+link+'\nEmail: '+u.email+'\nBoard: '+u.board+'\n\nIf you do not know your password, tap "Forgot password?" on the login page.';
+  modal('<h3 style="margin:0 0 10px">📧 Invite · '+esc(u.name||u.email)+'</h3>'+
+    '<div class="card" style="white-space:pre-wrap;font-size:14px">'+esc(msg)+'</div>'+
+    '<div class="row"><button onclick="inviteMail(\''+id+'\','+esc(JSON.stringify(JSON.stringify(msg)))+')">✉️ Email</button>'+
+    '<button class="wa" onclick="openWA(prompt(\'Staff WhatsApp number:\')||\'\','+esc(JSON.stringify(JSON.stringify(msg)))+')">💬 WhatsApp</button>'+
+    '<button class="sec" style="flex:0 0 90px" onclick="navigator.clipboard&&navigator.clipboard.writeText('+esc(JSON.stringify(JSON.stringify(msg)))+');toast(\'📋 Copied\')">📋</button></div>');
+}
+async function inviteMail(id,json){
+  var u=(S.team||[]).filter(function(x){return x.id===id;})[0], msg=JSON.parse(json);
+  try{ var r=await sendEmails([{to:u.email,name:u.name||u.email,subject:(S.settings.company_name||'LorVe')+' — your app access',html:mailHtml(msg,[],{}),text:msg}]);
+    toast(r.sent?'📧 Email sent':'⚠️ Could not send'); closeModal(); }catch(e){ fail(e); }
+}
+async function saveStaff(id){
+  var sc=[]; document.querySelectorAll('.ed-sc').forEach(function(c){ if(c.checked) sc.push(c.value); });
+  try{ await q('Team', db.from('staff').update({name:val('ed-name'),board:val('ed-board'),status:val('ed-st'),screens:sc}).eq('id',id));
+    closeModal(); toast('✅ Saved'); stTeam(); }catch(e){ fail(e); }
 }
 function formStaff(){
   var pw='Lv'+Math.random().toString(36).slice(2,8)+Math.floor(10+Math.random()*89);
-  modal('<h3 style="margin:0 0 10px">➕ New staff</h3><div class="card">'+
+  modal('<h3 style="margin:0 0 10px">➕ Add new staff</h3><div class="card">'+
     '<label>Name</label><input id="ns-name" placeholder="Bhuiyan SIYAM">'+
     '<label>Email (the staff member’s own)</label><input id="ns-email" type="email" placeholder="siyam@gmail.com">'+
     '<label>Initial password</label><input id="ns-pass" value="'+pw+'">'+
     '<div class="m">Staff can change it later from Settings → Password</div>'+
-    '<label>Board</label><select id="ns-board">'+opts(Object.keys(BOARDS),'Seller board')+'</select>'+
-    '<div class="m" style="margin-top:6px" id="ns-hint"></div></div>'+
+    '<label>Board</label><select id="ns-board" onchange="el(\'ns-hint\').textContent=boardScreens(this.value)">'+opts(Object.keys(BOARDS),'Seller board')+'</select>'+
+    '<div class="m" id="ns-hint" style="margin-top:6px">'+esc(boardScreens('Seller board'))+'</div></div>'+
     '<button class="full" onclick="saveNewStaff()">Create</button>');
-  var h=function(){ el('ns-hint').textContent='Will see: '+(BOARDS[val('ns-board')]||[]).map(function(s){return SCREENS[s].t;}).join(' · '); };
-  el('ns-board').onchange=h; h();
 }
 async function saveNewStaff(){
   var name=val('ns-name'), email=val('ns-email').toLowerCase(), pass=val('ns-pass'), board=val('ns-board');
   if(!name||email.indexOf('@')<1){ toast('Enter name and a valid email'); return; }
-  if(pass.length<6){ toast('password must be at least 6 characters'); return; }
+  if(pass.length<6){ toast('Password must be at least 6 characters'); return; }
   try{
-    // separate client — so your own login is not affected
     var tmp=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{db:{schema:'lorve'},auth:{persistSession:false,autoRefreshToken:false,storageKey:'lorve-new-staff'}});
     var r=await tmp.auth.signUp({email:email,password:pass});
     if(r.error) throw r.error;
-    if(!r.data.session){ toast('⚠️ In Supabase "Confirm email" Turn off, then try again'); return; }
+    if(!r.data.session){ toast('⚠️ Turn off "Confirm email" in Supabase, then try again'); return; }
     var q1=await tmp.rpc('request_access',{p_name:name});
     if(q1.error) throw q1.error;
     await tmp.auth.signOut();
     await q('Team', db.from('staff').update({name:name,board:board,status:'Active'}).eq('email',email));
     var link=location.href.split('?')[0].split('#')[0];
-    var msg='Assalamu Alaikum '+name+',\n'+(S.settings.company_name||'LorVe')+' app account has been created ✅\n\nLink: '+link+'\nEmail: '+email+'\nPassword: '+pass+'\n\nAfter first login, set your own password from Settings → Password.';
+    var msg='Assalamu Alaikum '+name+',\n'+(S.settings.company_name||'LorVe')+' app account has been created ✅\n\nLink: '+link+'\nEmail: '+email+'\nPassword: '+pass+'\nBoard: '+board+'\n\nAfter first login, set your own password from Settings → Password.';
     modal('<h3 style="margin:0 0 10px">✅ '+esc(name)+' created</h3><div class="card">'+
       '<div class="between line"><span class="m">Email</span><b>'+esc(email)+'</b></div>'+
       '<div class="between line"><span class="m">Password</span><b>'+esc(pass)+'</b></div>'+
       '<div class="between line"><span class="m">Board</span><b>'+esc(board)+'</b></div></div>'+
-      '<div class="row"><button class="wa" onclick="openWA(prompt(\'Staff WhatsApp number:\')||\'\','+esc(JSON.stringify(msg))+')">💬 Send on WhatsApp</button>'+
-      '<button class="sec" onclick="navigator.clipboard&&navigator.clipboard.writeText('+esc(JSON.stringify(msg))+');toast(\'📋 Copied\')">📋 Copy</button></div>');
-    if(S.view==='settings'){ ST='team'; }
+      '<div class="row"><button class="wa" onclick="openWA(prompt(\'Staff WhatsApp number:\')||\'\','+esc(JSON.stringify(JSON.stringify(msg)))+')">💬 WhatsApp</button>'+
+      '<button class="sec" onclick="navigator.clipboard&&navigator.clipboard.writeText('+esc(JSON.stringify(JSON.stringify(msg)))+');toast(\'📋 Copied\')">📋 Copy</button></div>');
+    if(S.view==='settings'&&ST==='team') stTeam();
   }catch(e){
     var m=String(e.message||e);
     toast(m.indexOf('registered')>=0?'⚠️ An account already exists for this email':'⚠️ '+m);
   }
-}
-async function saveStaff(id){
-  var sc=[]; document.querySelectorAll('.tsc-'+id).forEach(function(c){ if(c.checked) sc.push(c.value); });
-  try{ await q('Team', db.from('staff').update({name:val('tn-'+id),board:val('tb-'+id),status:val('ts-'+id),screens:sc}).eq('id',id)); toast('✅ Saved'); vSettings(); }catch(e){ fail(e); }
 }
 function stWa(){
   var keys=[['wa_senders','Sender numbers (| separated, e.g. +8801XXXXXXXXX|+13477443867)'],['wa_tpl_order','Order confirmation'],['wa_tpl_pay','Payment received'],['wa_tpl_delivery','Parcel shipped'],['wa_tpl_due','Payment reminder'],['wa_tpl_chat','General']];
