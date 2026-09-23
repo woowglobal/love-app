@@ -251,6 +251,93 @@ nav button.mid.on::after{display:none}
 .qty input{width:76px;padding:6px 8px;font-size:13px;border-radius:9px}
 .qty .m{margin-left:auto}
 
+
+/* ═══════════════ Responsive layer · every screen size ═══════════════ */
+html{font-size:100%}
+body{font-size:clamp(14px,0.42vw + 13px,16px);overflow-x:hidden}
+img,svg,video{max-width:100%;height:auto}
+.t,.m,.between span,.item .b,td,th,label,button,h3{overflow-wrap:anywhere;word-break:break-word}
+.between{flex-wrap:wrap}
+.between>*{min-width:0}
+
+/* fluid spacing + width */
+.wrap{max-width:min(1180px,100%);padding:clamp(10px,1.6vw,20px) clamp(10px,1.6vw,18px)}
+.card{padding:clamp(12px,1.5vw,18px);border-radius:clamp(14px,1.4vw,20px)}
+.item{padding:clamp(10px,1.2vw,14px) clamp(12px,1.4vw,16px)}
+h3{font-size:clamp(15px,1vw + 12px,19px);margin:0 0 6px}
+.sec-t{font-size:clamp(10px,.5vw + 8px,12px)}
+.m{font-size:clamp(11px,.35vw + 10px,13px)}
+.t{font-size:clamp(13.5px,.4vw + 12px,15.5px)}
+label{font-size:clamp(10px,.3vw + 9px,11.5px)}
+button{font-size:clamp(13.5px,.35vw + 12.5px,15.5px);padding:clamp(10px,1.1vw,13px) clamp(12px,1.4vw,18px)}
+button.small{font-size:clamp(11.5px,.3vw + 11px,13px);padding:6px 11px}
+input,select,textarea{font-size:16px;padding:clamp(10px,1.1vw,13px) clamp(11px,1.2vw,14px)}
+
+/* header + brand scale */
+header{padding:calc(clamp(9px,1.2vw,14px) + env(safe-area-inset-top)) clamp(12px,2vw,22px) clamp(9px,1.2vw,14px)}
+header .co{font-size:clamp(15px,.6vw + 13px,19px)}
+header .who{font-size:clamp(9.5px,.25vw + 9px,11.5px)}
+header .co::before{width:clamp(14px,1.2vw,20px);height:clamp(14px,1.2vw,20px)}
+#login>div:first-child>div:first-child{font-size:clamp(26px,4vw + 16px,40px)}
+.login{max-width:min(420px,92vw)}
+.pres{font-size:clamp(9.5px,.3vw + 9px,11.5px);padding:6px clamp(12px,2vw,22px)}
+
+/* cards / KPIs adapt to any width */
+.kpis{grid-template-columns:repeat(auto-fit,minmax(clamp(132px,22vw,190px),1fr))!important;gap:clamp(8px,1vw,12px)}
+.kpi{padding:clamp(11px,1.3vw,16px);border-radius:clamp(16px,1.6vw,22px)}
+.kpi .v{font-size:clamp(17px,1.2vw + 12px,26px)}
+.kpi .l{font-size:clamp(9.5px,.3vw + 9px,11.5px)}
+
+/* product shelf + cart */
+.grid{grid-template-columns:repeat(auto-fill,minmax(clamp(96px,14vw,150px),1fr))}
+.tile .nm{font-size:clamp(11px,.3vw + 10px,13px)}
+.tile .pr{font-size:clamp(12px,.35vw + 11px,14px)}
+@media(min-width:1280px){.pos{grid-template-columns:1.5fr 1fr}}
+
+/* tables never break the page */
+table{min-width:480px}
+.card>table,.card>div>table{width:100%}
+.card:has(table){overflow-x:auto}
+td,th{padding:clamp(5px,.6vw,9px) clamp(4px,.5vw,8px);font-size:clamp(11.5px,.3vw + 11px,13.5px)}
+
+/* chips scroll nicely */
+.chips{flex-wrap:nowrap;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+@media(min-width:900px){.chips{flex-wrap:wrap}}
+
+/* modal: sheet on phones, centred dialog on big screens */
+@media(min-width:820px){
+  .modal{align-items:center}
+  .sheet{max-width:min(720px,92vw);border-radius:22px;max-height:88vh;animation:popIn .26s cubic-bezier(.2,.9,.2,1)}
+}
+@keyframes popIn{from{transform:translateY(14px) scale(.98);opacity:0}to{transform:none;opacity:1}}
+
+/* very small phones */
+@media(max-width:360px){
+  .kpis{grid-template-columns:1fr 1fr!important}
+  nav button .t{font-size:9px}
+  .thumb{width:40px;height:40px;flex:0 0 40px}
+}
+/* phones in landscape */
+@media(max-height:480px) and (orientation:landscape){
+  header{position:static}
+  nav{padding-top:4px}
+  .login{margin-top:4vh}
+}
+/* tablets */
+@media(min-width:680px) and (max-width:899px){
+  .wrap{padding-left:18px;padding-right:18px}
+}
+/* big desktop */
+@media(min-width:1500px){ .wrap{max-width:1320px} }
+
+/* printing: only the content */
+@media print{
+  header,nav,.pres,.speed,.installbar,.chips,.alerts{display:none!important}
+  body{background:#fff;padding:0}
+  .card{box-shadow:none;border:1px solid #e4e9e4;break-inside:avoid}
+}
+
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -261,7 +348,7 @@ nav button.mid.on::after{display:none}
   <div style="text-align:center;margin-bottom:18px">
     <div style="font-size:28px;font-weight:800;letter-spacing:-.6px">LorVe</div>
     <div style="color:var(--sub);font-size:13px">Business Control</div>
-    <div style="color:var(--sub);font-size:11px;margin-top:4px">version 28</div>
+    <div style="color:var(--sub);font-size:11px;margin-top:4px">version 29</div>
   </div>
   <div class="card" id="lg-box">
     <label>Email</label><input id="lg-email" type="email" autocomplete="username">
@@ -278,7 +365,7 @@ nav button.mid.on::after{display:none}
 <!-- ═════════ APP ═════════ -->
 <div id="app" class="hide">
   <header>
-    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div><div class="who" style="opacity:.6">v28</div></div>
+    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div><div class="who" style="opacity:.6">v29</div></div>
     <button class="small sec" onclick="logout()">Logout</button>
   </header>
   <div class="pres" id="pres"></div>
