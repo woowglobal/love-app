@@ -236,7 +236,7 @@ label{letter-spacing:.7px;color:#7d8a84}
   <div style="text-align:center;margin-bottom:18px">
     <div style="font-size:28px;font-weight:800;letter-spacing:-.6px">LorVe</div>
     <div style="color:var(--sub);font-size:13px">Business Control</div>
-    <div style="color:var(--sub);font-size:11px;margin-top:4px">version 24 · Money</div>
+    <div style="color:var(--sub);font-size:11px;margin-top:4px">version 25 · Accounts</div>
   </div>
   <div class="card" id="lg-box">
     <label>Email</label><input id="lg-email" type="email" autocomplete="username">
@@ -253,7 +253,7 @@ label{letter-spacing:.7px;color:#7d8a84}
 <!-- ═════════ APP ═════════ -->
 <div id="app" class="hide">
   <header>
-    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div><div class="who" style="opacity:.6">v24</div></div>
+    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div><div class="who" style="opacity:.6">v25</div></div>
     <button class="small sec" onclick="logout()">Logout</button>
   </header>
   <div class="pres" id="pres"></div>
@@ -273,7 +273,7 @@ var S = { user:null, staff:null, view:'home', period:'today',
 
 var SCREENS = {
   home:{i:'🏠',t:'Home'}, sale:{i:'➕',t:'Sell'}, orders:{i:'🧾',t:'Orders'}, stock:{i:'📦',t:'Stock'},
-  buy:{i:'🛒',t:'Import'}, delivery:{i:'🚚',t:'Delivery'}, money:{i:'💳',t:'Money'}, people:{i:'👥',t:'People'},
+  buy:{i:'🛒',t:'Import'}, delivery:{i:'🚚',t:'Delivery'}, money:{i:'💳',t:'Accounts'}, people:{i:'👥',t:'People'},
   message:{i:'✉️',t:'Messages'}, report:{i:'📈',t:'Reports'}, settings:{i:'⚙️',t:'Settings'}
 };
 var BOARDS = {
@@ -1413,9 +1413,9 @@ function ageBucket(d){ var n=(Date.now()-new Date(d))/86400000; return n<=30?0:(
 function tel(ph){ return ph?'<a href="tel:'+esc(String(ph).replace(/\s/g,''))+'"><button class="small sec">📞 Call</button></a>':''; }
 
 async function vMoney(){
-  var tabs=[['acc','🏦 Accounts'],['ar','💰 Receivable'],['ap','🏭 Payable'],['plan','📅 Schedule'],['stmt','📄 Statement']];
+  var tabs=[['acc','🏦 Cash & bank'],['exp','🧾 Expenses'],['ar','💰 Receivable'],['ap','🏭 Payable'],['plan','📅 Schedule'],['budget','📊 Budget'],['stmt','📄 Statement']];
   el('view').innerHTML='<div id="mwarn"></div><div class="chips">'+tabs.map(function(t){return '<button class="'+(MM===t[0]?'on':'')+'" onclick="MM=\''+t[0]+'\';vMoney()">'+t[1]+'</button>';}).join('')+'</div><div id="mny" class="m"><span class="loading"></span><span class="loading"></span></div>';
-  try{ await planWarn(); await ({acc:mAcc,ar:mAR,ap:mAP,plan:mPlan,stmt:mStmt})[MM](); }catch(e){ if(el('mny')) el('mny').innerHTML='<div class="err">'+esc(e.message)+'</div>'; }
+  try{ await planWarn(); await ({acc:mAcc,exp:mExp,ar:mAR,ap:mAP,plan:mPlan,budget:mBudget,stmt:mStmt})[MM](); }catch(e){ if(el('mny')) el('mny').innerHTML='<div class="err">'+esc(e.message)+'</div>'; }
 }
 async function planWarn(){
   if(!el('mwarn')) return;
@@ -1622,6 +1622,162 @@ async function mPlan(){
           '<button class="small sec" onclick="planSnooze('+x.id+',7)">⏰ +7d</button>'+
           '<button class="small sec" onclick="tally(\''+x.kind+'\',\''+esc(x.party_id||'')+'\')">📄</button></div></div>'; }).join(''); }).join('')+
     (up.length?'':'<div class="card m">Nothing scheduled — press "New schedule" to set a promised date</div>');
+}
+
+/* ── 🧾 Expenses ── */
+var EF='month';
+function expRange(){
+  var d=new Date();
+  if(EF==='today') return [today(),today()];
+  if(EF==='week') return [daysAgo(6),today()];
+  if(EF==='month') return [monthStart(),today()];
+  if(EF==='last'){ var a=new Date(d.getFullYear(),d.getMonth()-1,1), b=new Date(d.getFullYear(),d.getMonth(),0);
+    return [a.toISOString().slice(0,10), b.toISOString().slice(0,10)]; }
+  if(EF==='year') return [new Date().getFullYear()+'-01-01',today()];
+  return [daysAgo(29),today()];
+}
+async function mExp(){
+  var r=expRange();
+  var res=await Promise.all([ q('Expenses', db.from('expenses').select('*').gte('exp_date',r[0]).lte('exp_date',r[1]).order('exp_date',{ascending:false})),
+    q('Recurring', db.from('recurring_expenses').select('*').eq('active',true).order('category')) ]);
+  var ex=res[0], rec=res[1];
+  var by={}; ex.forEach(function(x){ var c=x.category||'Other'; by[c]=(by[c]||0)+(+x.amount||0); });
+  var tot=ex.reduce(function(a,x){return a+(+x.amount||0);},0);
+  var days=Math.max(1,Math.round((new Date(r[1])-new Date(r[0]))/86400000)+1);
+  var cats=Object.keys(by).sort(function(a,b){return by[b]-by[a];});
+  var mx=Math.max.apply(null,cats.map(function(c){return by[c];}).concat([1]));
+  var fil=[['today','Today'],['week','7 days'],['month','This month'],['last','Last month'],['year','This year']];
+  el('mny').innerHTML='<div class="row" style="margin-bottom:10px"><button onclick="formExp()">🧾 Add expense</button><button class="sec" onclick="recForm()">🔁 Fixed costs</button></div>'+
+    '<div class="chips">'+fil.map(function(f){ return '<button class="'+(EF===f[0]?'on':'')+'" onclick="EF=\''+f[0]+'\';mExp()">'+f[1]+'</button>'; }).join('')+'</div>'+
+    '<div class="kpis" style="grid-template-columns:repeat(3,1fr)">'+
+    kpi2('🧾 Total spent', k(tot), ex.length+' entries','linear-gradient(135deg,#b0645a,#8c4a42)','')+
+    kpi2('📆 Per day', k(tot/days), days+' days','linear-gradient(135deg,#b39163,#8c6f45)','')+
+    kpi2('🔁 Fixed monthly', k(rec.reduce(function(a,x){return a+(+x.amount||0);},0)), rec.length+' items','linear-gradient(135deg,#4b5d73,#34465a)','')+'</div>'+
+    '<div class="card"><b>By category</b>'+(cats.length?cats.map(function(c){
+      return '<div style="margin-top:8px"><div class="between"><span>'+esc(c)+'</span><b>'+money(by[c])+'</b></div><div class="bar"><span style="width:'+Math.round(by[c]/mx*100)+'%"></span></div></div>'; }).join(''):'<div class="m">No expenses in this period</div>')+'</div>'+
+    (rec.length?'<div class="card"><b>🔁 Fixed monthly costs</b>'+rec.map(function(x){
+      return '<div class="between line"><span>'+esc(x.category)+' · '+esc(x.description||'')+'<div class="m">day '+x.day_of_month+(x.last_posted?' · last posted '+nice(x.last_posted):' · never posted')+'</div></span>'+
+        '<span><b>'+money(x.amount)+'</b> <button class="small sec" onclick="postRec('+x.id+')">➕ Post</button></span></div>'; }).join('')+
+      '<button class="full sec" style="margin-top:10px" onclick="postAllRec()">➕ Post all for this month</button></div>':'')+
+    '<div class="sec-t">Entries</div>'+(ex.length?ex.map(function(x){
+      return '<div class="item" style="cursor:default"><div class="thumb">🧾</div><div class="b"><div class="between"><span class="t">'+esc(x.category||'Other')+'</span><b class="red">'+money(x.amount)+'</b></div>'+
+        '<div class="between"><span class="m">'+nice(x.exp_date)+' · '+esc(x.description||'')+' · '+esc(x.account||'')+'</span>'+(isAdmin()?'<button class="small sec" onclick="trashIt(\'expenses\',\''+x.id+'\')">🗑️</button>':'')+'</div></div></div>'; }).join(''):'')+
+    '<button class="full sec" onclick="printExp()">🖨️ Print expense statement</button>';
+  S.expRows=ex;
+}
+function printExp(){
+  var rows=(S.expRows||[]).slice().reverse().map(function(x,i,arr){ return {d:x.exp_date,t:(x.category||'Other')+' · '+(x.description||'')+(x.account?' ('+x.account+')':''),dr:+x.amount||0,cr:0,bal:0}; });
+  var run=0; rows.forEach(function(r){ run+=r.dr; r.bal=run; });
+  printStatement('Expenses · '+nice(expRange()[0])+' – '+nice(expRange()[1]), JSON.stringify(rows));
+}
+function recForm(){
+  db.from('recurring_expenses').select('*').order('category').then(function(r){
+    var rec=r.data||[];
+    modal('<h3 style="margin:0 0 10px">🔁 Fixed monthly costs</h3>'+
+      '<div class="card m">Salary, rent, internet — things that repeat every month. They are used for next month\'s forecast, and you can post them into expenses in one tap.</div>'+
+      rec.map(function(x){ return '<div class="card" style="padding:12px"><div class="between"><b>'+esc(x.category)+'</b><b>'+money(x.amount)+'</b></div>'+
+        '<div class="m">'+esc(x.description||'')+' · day '+x.day_of_month+' · '+(x.active?'active':'off')+'</div>'+
+        '<div class="row" style="margin-top:8px"><button class="small sec" onclick="recToggle('+x.id+','+(x.active?'false':'true')+')">'+(x.active?'⏸ Turn off':'▶️ Turn on')+'</button>'+
+        '<button class="small sec" onclick="recDel('+x.id+')">🗑️</button></div></div>'; }).join('')+
+      '<div class="card"><b>Add a fixed cost</b><label>Category</label><select id="rc-c">'+opts(S.expCats)+'</select>'+
+      '<label>Description</label><input id="rc-d" placeholder="Office rent">'+
+      '<div class="row"><div><label>Amount</label><input id="rc-a" inputmode="decimal"></div><div><label>Day of month</label><input id="rc-day" inputmode="numeric" value="1"></div></div>'+
+      '<label>Account</label><select id="rc-acc">'+opts(S.accounts.map(function(a){return a.name;}))+'</select></div>'+
+      '<button class="full" onclick="saveRec()">Save</button>');
+  });
+}
+async function saveRec(){ if(!num('rc-a')){ toast('Enter amount'); return; }
+  try{ await q('Fixed', db.from('recurring_expenses').insert({category:val('rc-c'),description:val('rc-d'),amount:num('rc-a'),day_of_month:Math.min(28,Math.max(1,num('rc-day')||1)),account:val('rc-acc')}));
+    closeModal(); toast('✅ Saved'); mExp(); }catch(e){ fail(e); } }
+async function recToggle(id,on){ try{ await q('Fixed', db.from('recurring_expenses').update({active:on}).eq('id',id)); closeModal(); recForm(); }catch(e){ fail(e); } }
+async function recDel(id){ if(!confirm('Delete this fixed cost?')) return;
+  try{ await q('Fixed', db.from('recurring_expenses').delete().eq('id',id)); closeModal(); recForm(); }catch(e){ fail(e); } }
+async function postRec(id){
+  try{
+    var r=await q('Fixed', db.from('recurring_expenses').select('*').eq('id',id).single());
+    var d=monthStart().slice(0,8)+String(r.day_of_month).padStart(2,'0');
+    await q('Expense', db.from('expenses').insert({category:r.category,description:(r.description||'')+' (monthly)',amount:r.amount,account:r.account,exp_date:d,entered_by:S.staff.email}));
+    await db.from('recurring_expenses').update({last_posted:d}).eq('id',id);
+    toast('✅ Posted'); mExp();
+  }catch(e){ fail(e); }
+}
+async function postAllRec(){
+  if(!confirm('Post all fixed costs for this month?')) return;
+  try{ var r=await q('Fixed', db.from('recurring_expenses').select('*').eq('active',true));
+    var m=monthStart().slice(0,7);
+    var rows=r.filter(function(x){ return !x.last_posted || String(x.last_posted).slice(0,7)!==m; })
+      .map(function(x){ return {category:x.category,description:(x.description||'')+' (monthly)',amount:x.amount,account:x.account,exp_date:monthStart().slice(0,8)+String(x.day_of_month).padStart(2,'0'),entered_by:S.staff.email}; });
+    if(!rows.length){ toast('Already posted for this month'); return; }
+    await q('Expense', db.from('expenses').insert(rows));
+    for(var i=0;i<r.length;i++){ await db.from('recurring_expenses').update({last_posted:today()}).eq('id',r[i].id); }
+    toast('✅ '+rows.length+' posted'); mExp();
+  }catch(e){ fail(e); }
+}
+
+/* ── 📊 Budget · income vs expense · forecast ── */
+async function mBudget(){
+  var res=await Promise.all([ q('Months', db.from('v_month_pl').select('*').order('month',{ascending:false}).limit(7)),
+    q('Categories', db.from('v_expense_month').select('*').order('month',{ascending:false}).limit(120)),
+    q('Recurring', db.from('recurring_expenses').select('*').eq('active',true)),
+    q('Budget', db.from('budgets').select('*').order('month',{ascending:false}).limit(60)) ]);
+  var pl=res[0].slice().reverse(), cat=res[1], rec=res[2], bud=res[3];
+  var nm=new Date(); nm.setMonth(nm.getMonth()+1); nm.setDate(1);
+  var nextM=nm.toISOString().slice(0,10), thisM=monthStart();
+  // forecast = average of last 3 months per category, fixed costs win where they exist
+  var last3={}, seen={};
+  cat.forEach(function(c){ var m=String(c.month).slice(0,10); if(m===thisM) return;
+    if(!seen[m]) seen[m]=1;
+    if(Object.keys(seen).length<=3){ last3[c.category]=(last3[c.category]||0)+(+c.amount||0); } });
+  var nseen=Math.max(1,Math.min(3,Object.keys(seen).length));
+  var fc={}; Object.keys(last3).forEach(function(c){ fc[c]=Math.round(last3[c]/nseen); });
+  rec.forEach(function(r){ fc[r.category]=Math.max(fc[r.category]||0, +r.amount||0); });
+  var fcTot=Object.keys(fc).reduce(function(a,c){return a+fc[c];},0);
+  var avgSales=pl.length?pl.slice(-3).reduce(function(a,x){return a+(+x.sales||0);},0)/Math.min(3,pl.length):0;
+  var budMap={}; bud.filter(function(b){return String(b.month).slice(0,10)===nextM;}).forEach(function(b){ budMap[b.category]=+b.amount; });
+  var thisCat={}; cat.filter(function(c){return String(c.month).slice(0,10)===thisM;}).forEach(function(c){ thisCat[c.category]=+c.amount; });
+  var W=600,H=190, mx=Math.max(1,Math.max.apply(null,pl.map(function(x){return Math.max(+x.sales||0,(+x.cogs||0)+(+x.expense||0));})));
+  var bw=W/Math.max(1,pl.length);
+  var bars=pl.map(function(x,i){ var hs=(+x.sales||0)/mx*(H-30), he=((+x.cogs||0)+(+x.expense||0))/mx*(H-30);
+    return '<rect x="'+(i*bw+bw*.16)+'" y="'+(H-20-hs)+'" width="'+(bw*.3)+'" height="'+Math.max(hs,1)+'" rx="4" fill="#14534a"/>'+
+           '<rect x="'+(i*bw+bw*.54)+'" y="'+(H-20-he)+'" width="'+(bw*.3)+'" height="'+Math.max(he,1)+'" rx="4" fill="#b0645a"/>'+
+           '<text x="'+(i*bw+bw/2)+'" y="'+(H-6)+'" font-size="10" fill="#6d7c75" text-anchor="middle">'+new Date(x.month).toLocaleDateString('en-GB',{month:'short'})+'</text>'; }).join('');
+  el('mny').innerHTML=
+    '<div class="card"><div class="between"><b>Income vs cost · last months</b><span class="m">▮ Income · ▮ Cost + expense</span></div>'+
+    '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="width:100%;height:200px;margin-top:8px">'+bars+'<line x1="0" y1="'+(H-20)+'" x2="'+W+'" y2="'+(H-20)+'" stroke="#e4e9e4"/></svg>'+
+    '<div style="overflow-x:auto;margin-top:8px"><table><tr><th>Month</th><th class="n">Sales</th><th class="n">Goods</th><th class="n">Expenses</th><th class="n">Net</th></tr>'+
+    pl.slice().reverse().map(function(x){ return '<tr><td>'+new Date(x.month).toLocaleDateString('en-GB',{month:'short',year:'numeric'})+'</td><td class="n">'+money(x.sales)+'</td><td class="n">'+money(x.cogs)+'</td>'+
+      '<td class="n">'+money(x.expense)+'</td><td class="n '+((+x.net_profit)>=0?'green':'red')+'">'+money(x.net_profit)+'</td></tr>'; }).join('')+'</table></div></div>'+
+    '<div class="kpis" style="grid-template-columns:repeat(3,1fr)">'+
+    kpi2('🔮 Forecast cost', k(fcTot), 'next month','linear-gradient(135deg,#b0645a,#8c4a42)','')+
+    kpi2('📈 Expected sales', k(avgSales), '3-month average','linear-gradient(135deg,#14534a,#0e3b34)','')+
+    kpi2('🏁 Expected net', k(avgSales*0.35-fcTot), 'rough guide','linear-gradient(135deg,#4b5d73,#34465a)','')+'</div>'+
+    '<div class="card"><div class="between"><b>📊 Budget · '+new Date(nextM).toLocaleDateString('en-GB',{month:'long',year:'numeric'})+'</b><button class="small" onclick="saveBudget(\''+nextM+'\')">Save budget</button></div>'+
+    '<div class="m" style="margin:6px 0">Forecast is the 3-month average, with fixed costs applied. Change any number to set your budget.</div>'+
+    '<table><tr><th>Category</th><th class="n">This month</th><th class="n">Forecast</th><th class="n">Budget</th></tr>'+
+    (S.expCats||[]).concat(Object.keys(fc).filter(function(c){return (S.expCats||[]).indexOf(c)<0;})).map(function(c){
+      return '<tr><td>'+esc(c)+'</td><td class="n">'+money(thisCat[c]||0)+'</td><td class="n">'+money(fc[c]||0)+'</td>'+
+        '<td class="n"><input class="bud" data-c="'+esc(c)+'" inputmode="decimal" style="width:110px;padding:7px" value="'+(budMap[c]!=null?budMap[c]:(fc[c]||''))+'"></td></tr>'; }).join('')+
+    '</table></div>'+
+    '<button class="full sec" onclick="printBudget()">🖨️ Print income vs expense</button>';
+  S.pl=pl; S.fc=fc; S.nextM=nextM;
+}
+async function saveBudget(month){
+  var rows=[]; document.querySelectorAll('.bud').forEach(function(i){ var v=Number(i.value)||0; if(v>0) rows.push({month:month,category:i.dataset.c,amount:v,created_by:S.staff.email}); });
+  if(!rows.length){ toast('Type at least one budget'); return; }
+  try{ await q('Budget', db.from('budgets').upsert(rows,{onConflict:'month,category'})); toast('✅ Budget saved'); }catch(e){ fail(e); }
+}
+function printBudget(){
+  var pl=(S.pl||[]).slice().reverse(), fc=S.fc||{}, st=S.settings, w=window.open('','_blank');
+  w.document.write('<html><head><meta charset="utf-8"><title>Income vs expense</title><style>body{font:12.5px Inter,-apple-system,Arial,sans-serif;max-width:800px;margin:22px auto;padding:0 18px;color:#14201c}'+
+    'h1{margin:0;font-size:22px}h3{margin:18px 0 6px;font-size:14px;color:#14534a}table{width:100%;border-collapse:collapse}th{background:#0e2f2b;color:#fff;padding:6px;text-align:left;font-size:10px}td{padding:6px;border-bottom:1px solid #e4e9e4}.n{text-align:right}@media print{button{display:none}}</style></head><body>'+
+    '<div style="border-bottom:3px solid #14534a;padding-bottom:8px"><h1>'+esc(st.company_name||'LorVe')+'</h1><div style="color:#6d7c75">Income vs expense · '+new Date().toLocaleDateString('en-GB')+'</div></div>'+
+    '<h3>Month by month</h3><table><tr><th>Month</th><th class="n">Sales</th><th class="n">Goods</th><th class="n">Expenses</th><th class="n">Net</th></tr>'+
+    pl.map(function(x){ return '<tr><td>'+new Date(x.month).toLocaleDateString('en-GB',{month:'short',year:'numeric'})+'</td><td class="n">'+money(x.sales)+'</td><td class="n">'+money(x.cogs)+'</td><td class="n">'+money(x.expense)+'</td><td class="n">'+money(x.net_profit)+'</td></tr>'; }).join('')+'</table>'+
+    '<h3>Next month forecast</h3><table><tr><th>Category</th><th class="n">Forecast</th></tr>'+
+    Object.keys(fc).map(function(c){ return '<tr><td>'+esc(c)+'</td><td class="n">'+money(fc[c])+'</td></tr>'; }).join('')+
+    '<tr><td><b>Total</b></td><td class="n"><b>'+money(Object.keys(fc).reduce(function(a,c){return a+fc[c];},0))+'</b></td></tr></table>'+
+    '<div style="text-align:center;margin:22px"><button onclick="print()" style="padding:12px 26px;border:0;border-radius:10px;background:#0e2f2b;color:#fff;font-size:15px">🖨️ Print / PDF</button></div></body></html>');
+  w.document.close();
 }
 
 /* ── 📄 Payment statement ── */
