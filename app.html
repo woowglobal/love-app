@@ -56,9 +56,10 @@ button:active,.item:active{transform:scale(.98)}
 .pill.ok{background:#e6f5ec;color:var(--green)}.pill.low{background:#fff3e5;color:var(--orange)}.pill.out{background:#fdecee;color:var(--red)}.pill.b{background:#e8f2ff;color:var(--accent)}
 .thumb{width:46px;height:46px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 46px;object-fit:cover}
 .green{color:var(--green)}.red{color:var(--red)}
-nav{position:fixed;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(5,1fr);z-index:30;
+nav{position:fixed;bottom:0;left:0;right:0;z-index:30;display:flex;justify-content:center;
   background:rgba(252,252,253,.92);backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
-  border-top:1px solid var(--line);padding:7px 4px calc(8px + env(safe-area-inset-bottom))}
+  border-top:1px solid var(--line);padding:7px 6px calc(8px + env(safe-area-inset-bottom))}
+.navin{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;width:100%;max-width:560px;gap:2px}
 nav button{background:none;color:var(--sub);font-size:10px;padding:3px;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative}
 nav button .i{font-size:20px}
 nav button.on{color:var(--ink)}
@@ -205,6 +206,19 @@ label{letter-spacing:.7px;color:#7d8a84}
 .alert.red{animation:beat 2.6s ease-in-out infinite}
 .bar{height:7px;border-radius:9px;background:var(--line);margin-top:8px;overflow:hidden}
 .bar span{display:block;height:7px;border-radius:9px;background:linear-gradient(90deg,#14534a,#c8a96a)}
+
+nav button{border-radius:14px;padding:6px 2px;transition:background .2s,color .2s,transform .2s}
+nav button:hover{background:rgba(20,83,74,.06)}
+nav button.mid .i{font-size:23px}
+nav button.mid.on{background:linear-gradient(135deg,#14534a,#0e3b34);color:#fff;box-shadow:0 8px 18px -10px rgba(14,59,52,.8)}
+nav button.mid.on::after{display:none}
+@media(min-width:760px){
+  nav{background:transparent;border-top:0;backdrop-filter:none;-webkit-backdrop-filter:none;padding-bottom:calc(14px + env(safe-area-inset-bottom));pointer-events:none}
+  .navin{pointer-events:auto;width:auto;max-width:none;grid-auto-columns:minmax(84px,1fr);gap:4px;padding:6px;border-radius:22px;
+    background:rgba(247,249,246,.92);backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
+    border:1px solid rgba(255,255,255,.85);box-shadow:0 18px 40px -22px rgba(14,32,28,.55),var(--emb-sm)}
+  body{padding-bottom:calc(104px + env(safe-area-inset-bottom))}
+}
 /* ═══════════ Counter (POS) layout ═══════════ */
 .pos{display:grid;grid-template-columns:1fr;gap:12px}
 @media(min-width:900px){.pos{grid-template-columns:1.3fr 1fr;align-items:start}.pos .cart{position:sticky;top:78px}}
@@ -236,7 +250,7 @@ label{letter-spacing:.7px;color:#7d8a84}
   <div style="text-align:center;margin-bottom:18px">
     <div style="font-size:28px;font-weight:800;letter-spacing:-.6px">LorVe</div>
     <div style="color:var(--sub);font-size:13px">Business Control</div>
-    <div style="color:var(--sub);font-size:11px;margin-top:4px">version 26 · Reports</div>
+    <div style="color:var(--sub);font-size:11px;margin-top:4px">version 27</div>
   </div>
   <div class="card" id="lg-box">
     <label>Email</label><input id="lg-email" type="email" autocomplete="username">
@@ -253,7 +267,7 @@ label{letter-spacing:.7px;color:#7d8a84}
 <!-- ═════════ APP ═════════ -->
 <div id="app" class="hide">
   <header>
-    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div><div class="who" style="opacity:.6">v26</div></div>
+    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div><div class="who" style="opacity:.6">v27</div></div>
     <button class="small sec" onclick="logout()">Logout</button>
   </header>
   <div class="pres" id="pres"></div>
@@ -433,10 +447,18 @@ async function dueReminder(){
 /* ═══════════════════ NAV ═══════════════════ */
 function myScreens(){ var s = S.staff.screens && S.staff.screens.length ? S.staff.screens : (BOARDS[S.staff.board] || BOARDS['Seller board']); return s; }
 function buildNav(){
-  var s = myScreens(), main = s.slice(0,4), more = s.slice(4);
-  el('nav').innerHTML = main.map(function(id){ return '<button data-v="'+id+'" onclick="go(\''+id+'\')"><span class="i">'+SCREENS[id].i+'</span>'+SCREENS[id].t+'</button>'; }).join('') +
-    (more.length ? '<button data-v="_more" onclick="moreMenu()"><span class="i">⋯</span>More</button>' : '');
-  el('nav').style.gridTemplateColumns = 'repeat('+(main.length+(more.length?1:0))+',1fr)';
+  var s=myScreens(), hasHome=s.indexOf('home')>=0;
+  var others=s.filter(function(x){return x!=='home';});
+  var left=others.slice(0,2), right=others.slice(2,4), more=others.slice(4);
+  var main=hasHome? left.concat(['home'], right) : others.slice(0,5);
+  if(!hasHome) more=others.slice(5);
+  var cells=main.map(function(id){
+    var mid=(id==='home');
+    return '<button data-v="'+id+'" class="'+(mid?'mid':'')+'" onclick="go(\''+id+'\')"><span class="badge hide" id="bdg-'+id+'"></span>'+
+      '<span class="i">'+SCREENS[id].i+'</span><span class="t">'+SCREENS[id].t+'</span></button>'; });
+  if(more.length) cells.push('<button data-v="_more" onclick="moreMenu()"><span class="badge hide" id="bdg-_more"></span><span class="i">⋯</span><span class="t">More</span></button>');
+  el('nav').innerHTML='<div class="navin">'+cells.join('')+'</div>';
+  S.moreList=more;
 }
 function moreMenu(){
   var more = myScreens().slice(4);
