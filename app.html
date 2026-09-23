@@ -236,7 +236,7 @@ label{letter-spacing:.7px;color:#7d8a84}
   <div style="text-align:center;margin-bottom:18px">
     <div style="font-size:28px;font-weight:800;letter-spacing:-.6px">LorVe</div>
     <div style="color:var(--sub);font-size:13px">Business Control</div>
-    <div style="color:var(--sub);font-size:11px;margin-top:4px">version 23 · Stock</div>
+    <div style="color:var(--sub);font-size:11px;margin-top:4px">version 24 · Money</div>
   </div>
   <div class="card" id="lg-box">
     <label>Email</label><input id="lg-email" type="email" autocomplete="username">
@@ -253,7 +253,7 @@ label{letter-spacing:.7px;color:#7d8a84}
 <!-- ═════════ APP ═════════ -->
 <div id="app" class="hide">
   <header>
-    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div><div class="who" style="opacity:.6">v23</div></div>
+    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div><div class="who" style="opacity:.6">v24</div></div>
     <button class="small sec" onclick="logout()">Logout</button>
   </header>
   <div class="pres" id="pres"></div>
@@ -377,6 +377,7 @@ async function start(){
   db.rpc('touch_login').then(function(){});
   await loadMaster();
   presence();
+  setTimeout(dueReminder, 1500);
   buildNav();
   go(myScreens()[0]);
 }
@@ -408,6 +409,25 @@ function presence(){
       el('pres').innerHTML = names.map(function(x){ return '<span><span class="d"></span>'+esc(x.n)+(x.me?' (You)':'')+'</span>'; }).join('');
     }).subscribe(function(s){ if(s === 'SUBSCRIBED') ch.track({ name: S.staff.name || S.staff.email, at: Date.now() }); });
   }catch(e){ console.warn(e); }
+}
+
+/* ── Payment reminder pop-up (once a day) ── */
+async function dueReminder(){
+  try{
+    var key='lorve_due_'+today();
+    if(localStorage.getItem(key)) return;
+    if(myScreens().indexOf('money')<0) return;
+    var up=await db.from('v_upcoming').select('*').lte('due_date', today()).order('due_date');
+    var rows=(up.data||[]);
+    if(!rows.length) return;
+    localStorage.setItem(key,'1');
+    S.plans=rows;
+    modal('<h3 style="margin:0 0 4px">🔔 Payment reminders</h3><div class="m" style="margin-bottom:10px">'+rows.length+' payment(s) due today or overdue</div>'+
+      rows.map(function(x){ return '<div class="card" style="padding:12px"><div class="between"><b>'+esc(x.name||x.party_name||'—')+'</b><b class="'+(x.kind==='Payable'?'red':'green')+'">'+(x.kind==='Payable'?'− ':'+ ')+money(x.amount)+'</b></div>'+
+        '<div class="m">'+esc(x.kind)+' · '+nice(x.due_date)+' · '+(x.days_left<0?'<span class="red">'+Math.abs(x.days_left)+' days late</span>':'due today')+(x.note?' · '+esc(x.note):'')+'</div>'+
+        '<div class="row" style="margin-top:8px">'+tel(x.phone)+'<button class="small" onclick="planPaid('+x.id+')">✅ Paid</button><button class="small sec" onclick="planSnooze('+x.id+',3)">⏰ +3d</button></div></div>'; }).join('')+
+      '<button class="full sec" onclick="closeModal();MM=\'plan\';go(\'money\')">📅 Open schedule</button>');
+  }catch(e){ }
 }
 
 /* ═══════════════════ NAV ═══════════════════ */
@@ -1390,14 +1410,24 @@ var MM='acc';
 var MICON={'Cash':'💵','bKash':'📱','Nagad':'🟠','Rocket':'🟣','Bank Transfer':'🏦','Bank':'🏦','Card':'💳','COD':'🚚','USD':'💲','Cheque':'🧾'};
 function mi(m){ return MICON[m]||'💠'; }
 function ageBucket(d){ var n=(Date.now()-new Date(d))/86400000; return n<=30?0:(n<=60?1:2); }
+function tel(ph){ return ph?'<a href="tel:'+esc(String(ph).replace(/\s/g,''))+'"><button class="small sec">📞 Call</button></a>':''; }
 
 async function vMoney(){
-  var tabs=[['acc','🏦 Accounts'],['ar','💰 Receivable'],['ap','🏭 Payable'],['stmt','📄 Statement']];
-  el('view').innerHTML='<div class="chips">'+tabs.map(function(t){return '<button class="'+(MM===t[0]?'on':'')+'" onclick="MM=\''+t[0]+'\';vMoney()">'+t[1]+'</button>';}).join('')+'</div><div id="mny" class="m"><span class="loading"></span><span class="loading"></span></div>';
-  try{ await ({acc:mAcc,ar:mAR,ap:mAP,stmt:mStmt})[MM](); }catch(e){ el('mny').innerHTML='<div class="err">'+esc(e.message)+'</div>'; }
+  var tabs=[['acc','🏦 Accounts'],['ar','💰 Receivable'],['ap','🏭 Payable'],['plan','📅 Schedule'],['stmt','📄 Statement']];
+  el('view').innerHTML='<div id="mwarn"></div><div class="chips">'+tabs.map(function(t){return '<button class="'+(MM===t[0]?'on':'')+'" onclick="MM=\''+t[0]+'\';vMoney()">'+t[1]+'</button>';}).join('')+'</div><div id="mny" class="m"><span class="loading"></span><span class="loading"></span></div>';
+  try{ await planWarn(); await ({acc:mAcc,ar:mAR,ap:mAP,plan:mPlan,stmt:mStmt})[MM](); }catch(e){ if(el('mny')) el('mny').innerHTML='<div class="err">'+esc(e.message)+'</div>'; }
+}
+async function planWarn(){
+  if(!el('mwarn')) return;
+  var up=await q('Schedule', db.from('v_upcoming').select('*').lte('due_date', daysAgo(-7)).order('due_date'));
+  S.plans=up;
+  var late=up.filter(function(x){return x.days_left<0;}), today_=up.filter(function(x){return x.days_left===0;});
+  el('mwarn').innerHTML=(late.length||today_.length)?'<div class="alerts">'+
+    (late.length?'<button class="alert red" onclick="MM=\'plan\';vMoney()"><b>'+late.length+'</b> overdue payments</button>':'')+
+    (today_.length?'<button class="alert amber" onclick="MM=\'plan\';vMoney()"><b>'+today_.length+'</b> due today</button>':'')+'</div>':'';
 }
 
-/* ── 🏦 Accounts + entries ── */
+/* ── 🏦 Accounts ── */
 async function mAcc(){
   var r=range();
   var res=await Promise.all([ q('Balance', db.from('v_accounts').select('*')),
@@ -1432,7 +1462,7 @@ async function arData(){
     if(!(o.due>0) || ['Cancelled','Returned'].indexOf(o.status)>=0) return;
     var c=by[o.customer_id]||(by[o.customer_id]={id:o.customer_id,name:o.customer_name||o.customer_id,phone:o.customer_phone,due:0,b:[0,0,0],orders:[]});
     var when=dl[o.id]||o.order_date;
-    c.due+=+o.due; c.b[ageBucket(when)]+=+o.due; c.orders.push({id:o.id,date:when,total:o.grand_total,paid:o.paid,due:o.due,delivered:!!dl[o.id]});
+    c.due+=+o.due; c.b[ageBucket(when)]+=+o.due; c.orders.push({id:o.id,date:when,total:o.grand_total,paid:o.paid,due:o.due});
   });
   S.customers.forEach(function(c){ if(+c.opening_due>0){ var x=by[c.id]||(by[c.id]={id:c.id,name:c.name,phone:c.phone,due:0,b:[0,0,0],orders:[]}); x.due+=+c.opening_due; x.b[2]+=+c.opening_due; } });
   return { list:Object.keys(by).map(function(k){return by[k];}).sort(function(a,b){return b.due-a.due;}), transit:transit, held:held };
@@ -1448,48 +1478,17 @@ async function mAR(){
     [['0–30 days',B[0],'ok'],['31–60 days',B[1],'low'],['60+ days',B[2],'out']].map(function(x){
       return '<div class="between line"><span class="pill '+x[2]+'">'+x[0]+'</span><b>'+money(x[1])+'</b></div>'; }).join('')+
     '<div class="between" style="margin-top:8px"><span class="m">In transit (COD not yet delivered)</span><b>'+money(d.transit)+'</b></div></div>'+
-    '<div class="sec-t">Customer wise</div>'+
+    '<div class="sec-t">Customer wise · tap for the tally sheet</div>'+
     (d.list.length?d.list.map(function(c){ var worst=c.b[2]>0?'out':(c.b[1]>0?'low':'ok');
-      return '<div class="item" onclick="stmtCustomer(\''+c.id+'\')"><div class="thumb">👤</div><div class="b"><div class="between"><span class="t">'+esc(c.name)+'</span><b class="red">'+money(c.due)+'</b></div>'+
+      return '<div class="item" onclick="tally(\'Receivable\',\''+c.id+'\')"><div class="thumb" style="border-radius:50%;background:linear-gradient(135deg,#8fb3a0,#14534a);color:#fff;font-weight:800">'+esc(initials(c.name))+'</div>'+
+      '<div class="b"><div class="between"><span class="t">'+esc(c.name)+'</span><b class="red">'+money(c.due)+'</b></div>'+
       '<div class="between"><span class="m">'+c.orders.length+' orders · '+esc(c.phone||'')+'</span><span class="pill '+worst+'">'+(c.b[2]>0?'60+ days':(c.b[1]>0?'31–60':'0–30'))+'</span></div></div></div>'; }).join('')
       :'<div class="card m">No dues 🎉</div>');
-}
-async function stmtCustomer(id){
-  var c=S.customers.filter(function(x){return x.id===id;})[0]||{name:id};
-  var res=await Promise.all([ q('Orders', db.from('v_orders').select('id,order_date,status,grand_total,due').eq('customer_id',id).order('order_date')),
-    q('Payments', db.from('payments').select('*').eq('party_id',id).order('pay_date')) ]);
-  var rows=[];
-  if(+c.opening_due) rows.push({d:'',t:'Previous due',dr:+c.opening_due,cr:0});
-  res[0].forEach(function(o){ if(['Cancelled'].indexOf(o.status)<0) rows.push({d:o.order_date,t:'Order '+o.id,dr:+o.grand_total,cr:0}); });
-  res[1].forEach(function(p){ rows.push({d:p.pay_date,t:mi(p.method)+' '+p.kind+(p.reference?' · '+p.reference:''),dr:0,cr:+p.amount}); });
-  rows.sort(function(a,b){ return String(a.d).localeCompare(String(b.d)); });
-  var bal=0; rows.forEach(function(r){ bal+=r.dr-r.cr; r.bal=bal; });
-  modal('<div class="between"><h3 style="margin:0">'+esc(c.name)+'</h3><b class="'+(bal>0?'red':'green')+'">'+money(bal)+'</b></div>'+
-    '<div class="m" style="margin-bottom:10px">'+esc(c.phone||'')+' · statement</div>'+
-    '<div class="card"><table><tr><th>Date</th><th>Details</th><th class="n">Bill</th><th class="n">Paid</th><th class="n">Balance</th></tr>'+
-    rows.map(function(r){ return '<tr><td class="m">'+(r.d?nice(r.d):'—')+'</td><td>'+esc(r.t)+'</td><td class="n">'+(r.dr?money(r.dr):'')+'</td><td class="n green">'+(r.cr?money(r.cr):'')+'</td><td class="n"><b>'+money(r.bal)+'</b></td></tr>'; }).join('')+'</table></div>'+
-    '<div class="row"><button onclick="printStatement(\''+esc(c.name)+'\','+esc(JSON.stringify(JSON.stringify(rows)))+')">🖨️ Print / PDF</button>'+
-    (c.phone?'<button class="wa" onclick="openWA(\''+esc(c.phone)+'\',\'Assalamu Alaikum '+esc(c.name)+', your outstanding balance with us is '+money(bal)+'. Kindly settle at your convenience. — '+esc(S.settings.company_name||'LorVe')+'\')">💬</button>':'')+'</div>');
-}
-function printStatement(title, json){
-  var rows=JSON.parse(json), st=S.settings, bal=rows.length?rows[rows.length-1].bal:0;
-  var w=window.open('','_blank');
-  w.document.write('<html><head><meta charset="utf-8"><title>Statement · '+title+'</title><style>body{font:13px -apple-system,Arial,sans-serif;max-width:720px;margin:24px auto;padding:0 20px;color:#1d1d1f}'+
-    'h1{margin:0;font-size:22px}table{width:100%;border-collapse:collapse;margin:18px 0}th{background:#123b36;color:#fff;padding:8px;text-align:left;font-size:11px}td{padding:8px;border-bottom:1px solid #e5e5ea}.n{text-align:right}'+
-    '.tot{font-size:17px;font-weight:800;text-align:right;margin-top:8px}@media print{button{display:none}}</style></head><body>'+
-    '<div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #123b36;padding-bottom:10px">'+
-    '<div><h1>'+esc(st.company_name||'LorVe')+'</h1><div style="color:#86868b;font-size:12px">'+esc([st.company_address,st.company_phone].filter(String).join(' · '))+'</div></div>'+
-    '<div style="text-align:right"><div style="font-size:18px;font-weight:800;color:#1f7a6d">STATEMENT</div><div style="color:#86868b">'+esc(title)+'</div><div style="color:#86868b;font-size:11px">'+new Date().toLocaleDateString('en-GB')+'</div></div></div>'+
-    '<table><tr><th>Date</th><th>Details</th><th class="n">Bill</th><th class="n">Paid</th><th class="n">Balance</th></tr>'+
-    rows.map(function(r){ return '<tr><td>'+(r.d?nice(r.d):'—')+'</td><td>'+esc(r.t)+'</td><td class="n">'+(r.dr?money(r.dr):'')+'</td><td class="n">'+(r.cr?money(r.cr):'')+'</td><td class="n">'+money(r.bal)+'</td></tr>'; }).join('')+'</table>'+
-    '<div class="tot">Balance due: '+money(bal)+'</div>'+
-    '<div style="text-align:center;margin:24px"><button onclick="print()" style="padding:12px 24px;border:0;border-radius:10px;background:#123b36;color:#fff;font-size:15px">🖨️ Print / PDF</button></div></body></html>');
-  w.document.close();
 }
 
 /* ── 🏭 Payable ── */
 async function apData(){
-  var res=await Promise.all([ q('Lines', db.from('v_shipment_lines').select('shipment_id,goods_bdt,shipping_bdt,eff_qty')),
+  var res=await Promise.all([ q('Lines', db.from('v_shipment_lines').select('shipment_id,goods_bdt,shipping_bdt')),
     q('Shipments', db.from('shipments').select('*')),
     q('Paid', db.from('payments').select('*').eq('kind','Supplier Payment')),
     q('Cards', db.from('card_txns').select('card,kind,amount_bdt')) ]);
@@ -1498,52 +1497,131 @@ async function apData(){
   res[0].forEach(function(l){ var s=sh[l.shipment_id]; if(!s) return;
     var a=agg[l.shipment_id]||(agg[l.shipment_id]={id:l.shipment_id,no:s.shipment_no,imp:s.importer_id,fx:+s.fx_rate,cur:s.currency,date:s.order_date,status:s.status,bdt:0,fxAmt:0});
     a.bdt+=(+l.goods_bdt||0)+(+l.shipping_bdt||0); a.fxAmt+=(+l.goods_bdt||0)/(+s.fx_rate||1); });
-  var paidBy={}; res[2].forEach(function(p){ if(p.doc_id) paidBy[p.doc_id]=(paidBy[p.doc_id]||0)+(+p.amount||0); });
-  var partyPaid={}; res[2].forEach(function(p){ if(!p.doc_id && p.party_id) partyPaid[p.party_id]=(partyPaid[p.party_id]||0)+(+p.amount||0); });
+  var paidBy={}, partyPaid={};
+  res[2].forEach(function(p){ if(p.doc_id) paidBy[p.doc_id]=(paidBy[p.doc_id]||0)+(+p.amount||0); else if(p.party_id) partyPaid[p.party_id]=(partyPaid[p.party_id]||0)+(+p.amount||0); });
   var by={};
-  Object.keys(agg).forEach(function(k){ var a=agg[k], sup=S.suppliers.filter(function(s){return s.id===a.imp;})[0];
-    var x=by[a.imp||'—']||(by[a.imp||'—']={id:a.imp,name:sup?sup.name:'(no supplier)',bill:0,paid:0,fxAmt:0,ships:[]});
-    var paid=paidBy[k]||0;
-    x.bill+=a.bdt; x.paid+=paid; x.fxAmt+=a.fxAmt; x.ships.push({no:a.no,id:k,date:a.date,bdt:a.bdt,paid:paid,fx:a.fx,cur:a.cur,fxAmt:a.fxAmt,status:a.status}); });
-  Object.keys(partyPaid).forEach(function(k){ var x=by[k]; if(x) x.paid+=partyPaid[k]; });
-  S.suppliers.forEach(function(s){ if(+s.opening_due){ var x=by[s.id]||(by[s.id]={id:s.id,name:s.name,bill:0,paid:0,fxAmt:0,ships:[]}); x.bill+=+s.opening_due; } });
+  Object.keys(agg).forEach(function(kk){ var a=agg[kk], sup=S.suppliers.filter(function(s){return s.id===a.imp;})[0];
+    var x=by[a.imp||'—']||(by[a.imp||'—']={id:a.imp,name:sup?sup.name:'(no supplier)',phone:sup?sup.phone:'',bill:0,paid:0,fxAmt:0,ships:[]});
+    var paid=paidBy[kk]||0;
+    x.bill+=a.bdt; x.paid+=paid; x.fxAmt+=a.fxAmt; x.ships.push({no:a.no,id:kk,date:a.date,bdt:a.bdt,paid:paid,fx:a.fx,cur:a.cur,fxAmt:a.fxAmt,status:a.status}); });
+  Object.keys(partyPaid).forEach(function(kk){ var x=by[kk]; if(x) x.paid+=partyPaid[kk]; });
+  S.suppliers.forEach(function(s){ if(+s.opening_due){ var x=by[s.id]||(by[s.id]={id:s.id,name:s.name,phone:s.phone,bill:0,paid:0,fxAmt:0,ships:[]}); x.bill+=+s.opening_due; } });
   var cards={}; res[3].forEach(function(t){ cards[t.card]=(cards[t.card]||0)+(t.kind==='Payment'?-(+t.amount_bdt||0):(+t.amount_bdt||0)); });
-  return { list:Object.keys(by).map(function(k){var x=by[k]; x.due=x.bill-x.paid; return x;}).filter(function(x){return Math.round(x.due)!==0;}).sort(function(a,b){return b.due-a.due;}), cards:cards };
+  return { list:Object.keys(by).map(function(kk){var x=by[kk]; x.due=x.bill-x.paid; return x;}).filter(function(x){return Math.round(x.due)!==0;}).sort(function(a,b){return b.due-a.due;}), cards:cards };
 }
 async function mAP(){
   var d=await apData(); S.ap=d;
-  var tot=d.list.reduce(function(a,x){return a+x.due;},0), cardTot=Object.keys(d.cards).reduce(function(a,k){return a+d.cards[k];},0);
+  var tot=d.list.reduce(function(a,x){return a+x.due;},0), cardTot=Object.keys(d.cards).reduce(function(a,kk){return a+d.cards[kk];},0);
   el('mny').innerHTML='<div class="kpis">'+
-    kpi2('🏭 Supplier / importer due', k(tot), d.list.length+' parties','linear-gradient(135deg,#7d8a86,#5c6864)','')+
+    kpi2('🏭 Importer / supplier due', k(tot), d.list.length+' parties','linear-gradient(135deg,#7d8a86,#5c6864)','')+
     kpi2('💳 Credit card due', k(cardTot), Object.keys(d.cards).length+' cards','linear-gradient(135deg,#8a7ca6,#665a84)','')+'</div>'+
+    '<div class="sec-t">Tap a party for the tally sheet</div>'+
     (d.list.length?d.list.map(function(x){
-      return '<div class="card"><div class="between"><b>'+esc(x.name)+'</b><b class="'+(x.due>0?'red':'green')+'">'+money(x.due)+'</b></div>'+
+      return '<div class="card"><div class="between" onclick="tally(\'Payable\',\''+esc(x.id||'')+'\')" style="cursor:pointer"><b>'+esc(x.name)+'</b><b class="'+(x.due>0?'red':'green')+'">'+money(x.due)+'</b></div>'+
         '<div class="m">Bill '+money(x.bill)+' · Paid '+money(x.paid)+(x.fxAmt?' · $'+x.fxAmt.toFixed(2):'')+'</div>'+
-        x.ships.map(function(s){ return '<div class="between line"><span class="m">🚢 '+esc(s.no)+' · '+nice(s.date)+(s.cur!=='BDT'?' · $'+s.fxAmt.toFixed(2)+' @ ৳'+s.fx:'')+'</span><span>'+money(s.bdt-s.paid)+'</span></div>'; }).join('')+
-        '<div class="row" style="margin-top:10px"><button class="small sec" onclick="payParty(\''+esc(x.id||'')+'\',\''+esc(x.name)+'\','+Math.round(x.due)+')">💵 Pay</button>'+
-        '<button class="small sec" onclick="stmtSupplier(\''+esc(x.id||'')+'\')">📄 Statement</button></div></div>'; }).join('')
+        x.ships.slice(0,4).map(function(s){ return '<div class="between line"><span class="m">🚢 '+esc(s.no)+' · '+nice(s.date)+(s.cur!=='BDT'?' · $'+s.fxAmt.toFixed(2)+' @ ৳'+s.fx:'')+'</span><span>'+money(s.bdt-s.paid)+'</span></div>'; }).join('')+
+        '<div class="row" style="margin-top:10px"><button class="small" onclick="payParty(\'Payable\',\''+esc(x.id||'')+'\',\''+esc(x.name)+'\','+Math.round(x.due)+')">💵 Pay</button>'+
+        '<button class="small sec" onclick="planForm(\'Payable\',\''+esc(x.id||'')+'\',\''+esc(x.name)+'\','+Math.round(x.due)+')">📅 Schedule</button>'+
+        '<button class="small sec" onclick="tally(\'Payable\',\''+esc(x.id||'')+'\')">📄 Tally</button>'+tel(x.phone)+'</div></div>'; }).join('')
       :'<div class="card m">No supplier dues 🎉</div>')+
     (Object.keys(d.cards).length?'<div class="sec-t">Credit cards</div>'+Object.keys(d.cards).map(function(c){
       return '<div class="item" style="cursor:default"><div class="thumb">💳</div><div class="b"><div class="between"><span class="t">'+esc(c)+'</span><b class="'+(d.cards[c]>0?'red':'green')+'">'+money(d.cards[c])+'</b></div></div></div>'; }).join(''):'');
 }
-function payParty(id,name,amt){
-  formPay();
-  setTimeout(function(){ if(el('p-k')) el('p-k').value='Supplier Payment'; if(el('p-party')) el('p-party').value=id; if(el('p-amt')) el('p-amt').value=amt>0?amt:''; },60);
-}
-async function stmtSupplier(id){
-  var s=S.suppliers.filter(function(x){return x.id===id;})[0]||{name:id};
-  var d=S.ap.list.filter(function(x){return x.id===id;})[0]||{ships:[]};
-  var pays=await q('Paid', db.from('payments').select('*').eq('party_id',id).eq('kind','Supplier Payment').order('pay_date'));
-  var rows=[];
-  if(+s.opening_due) rows.push({d:'',t:'Previous due',dr:+s.opening_due,cr:0});
-  d.ships.forEach(function(x){ rows.push({d:x.date,t:'Shipment '+x.no+(x.cur!=='BDT'?' ($'+x.fxAmt.toFixed(2)+' @ ৳'+x.fx+')':''),dr:x.bdt,cr:0}); });
-  pays.forEach(function(p){ rows.push({d:p.pay_date,t:mi(p.method)+' Payment'+(p.fx_amount?' ($'+p.fx_amount+' @ ৳'+p.fx_rate+')':'')+(p.reference?' · '+p.reference:''),dr:0,cr:+p.amount}); });
+
+/* ── 📄 Tally sheet · bills, instalments, running balance ── */
+async function tally(kind, id){
+  var isAR=kind==='Receivable';
+  var party=(isAR?S.customers:S.suppliers).filter(function(x){return x.id===id;})[0]||{name:id};
+  el('mny').innerHTML='<div class="card m"><span class="loading"></span></div>';
+  var rows=[], res;
+  if(isAR){
+    res=await Promise.all([ q('Orders', db.from('v_orders').select('id,invoice_no,order_date,status,grand_total').eq('customer_id',id).order('order_date')),
+      q('Payments', db.from('payments').select('*').eq('party_id',id).order('pay_date')) ]);
+    if(+party.opening_due) rows.push({d:'',t:'Previous due',dr:+party.opening_due,cr:0});
+    res[0].forEach(function(o){ if(o.status!=='Cancelled') rows.push({d:o.order_date,t:'Invoice '+(o.invoice_no||o.id),dr:+o.grand_total,cr:0,ref:o.id}); });
+    res[1].forEach(function(p,i){ rows.push({d:p.pay_date,t:'Instalment '+(i+1)+' · '+mi(p.method)+' '+(p.method||'')+(p.cheque_no?' #'+p.cheque_no:'')+(p.reference?' · '+p.reference:''),dr:0,cr:+p.amount,pid:p.id}); });
+  } else {
+    var ap=(S.ap&&S.ap.list.filter(function(x){return x.id===id;})[0])||{ships:[]};
+    res=await Promise.all([ q('Payments', db.from('payments').select('*').eq('party_id',id).eq('kind','Supplier Payment').order('pay_date')) ]);
+    if(+party.opening_due) rows.push({d:'',t:'Previous due',dr:+party.opening_due,cr:0});
+    ap.ships.forEach(function(s){ rows.push({d:s.date,t:'Shipment '+s.no+(s.cur!=='BDT'?' ($'+s.fxAmt.toFixed(2)+' @ ৳'+s.fx+')':''),dr:s.bdt,cr:0,ref:s.id}); });
+    res[0].forEach(function(p,i){ rows.push({d:p.pay_date,t:'Instalment '+(i+1)+' · '+mi(p.method)+' '+(p.method||'')+(p.reference?' · '+p.reference:''),dr:0,cr:+p.amount,pid:p.id}); });
+  }
   rows.sort(function(a,b){ return String(a.d).localeCompare(String(b.d)); });
-  var bal=0; rows.forEach(function(r){ bal+=r.dr-r.cr; r.bal=bal; });
-  modal('<div class="between"><h3 style="margin:0">'+esc(s.name)+'</h3><b class="'+(bal>0?'red':'green')+'">'+money(bal)+'</b></div><div class="m" style="margin-bottom:10px">supplier statement</div>'+
-    '<div class="card"><table><tr><th>Date</th><th>Details</th><th class="n">Bill</th><th class="n">Paid</th><th class="n">Balance</th></tr>'+
-    rows.map(function(r){ return '<tr><td class="m">'+(r.d?nice(r.d):'—')+'</td><td>'+esc(r.t)+'</td><td class="n">'+(r.dr?money(r.dr):'')+'</td><td class="n green">'+(r.cr?money(r.cr):'')+'</td><td class="n"><b>'+money(r.bal)+'</b></td></tr>'; }).join('')+'</table></div>'+
-    '<button class="full" onclick="printStatement(\''+esc(s.name)+'\','+esc(JSON.stringify(JSON.stringify(rows)))+')">🖨️ Print / PDF</button>');
+  var bal=0, paid=0, bill=0;
+  rows.forEach(function(r){ bal+=r.dr-r.cr; r.bal=bal; bill+=r.dr; paid+=r.cr; });
+  var plans=await q('Schedule', db.from('payment_plan').select('*').eq('party_id',id).eq('status','Open').order('due_date'));
+  el('mny').innerHTML='<div class="between" style="margin-bottom:8px"><button class="small sec" onclick="vMoney()">‹ Back</button>'+tel(party.phone)+'</div>'+
+    '<div class="kpis" style="grid-template-columns:repeat(3,1fr)">'+
+    kpi2(isAR?'🧾 Billed':'🚢 Billed', k(bill),'','linear-gradient(135deg,#4b5d73,#34465a)','')+
+    kpi2('✅ Paid', k(paid), rows.filter(function(r){return r.cr;}).length+' instalments','linear-gradient(135deg,#14534a,#0e3b34)','')+
+    kpi2('🔴 Balance', k(bal),'','linear-gradient(135deg,#b0645a,#8c4a42)','')+'</div>'+
+    '<div class="card"><div class="between"><b>'+esc(party.name)+'</b><span class="m">'+esc(party.phone||'')+'</span></div>'+
+    '<div style="overflow-x:auto;margin-top:8px"><table><tr><th>Date</th><th>Details</th><th class="n">Bill</th><th class="n">Paid</th><th class="n">Balance</th></tr>'+
+    rows.map(function(r){ return '<tr><td class="m">'+(r.d?nice(r.d):'—')+'</td><td>'+esc(r.t)+'</td><td class="n">'+(r.dr?money(r.dr):'')+'</td><td class="n green">'+(r.cr?money(r.cr):'')+'</td><td class="n"><b>'+money(r.bal)+'</b></td></tr>'; }).join('')+
+    '<tr><td colspan="2"><b>Balance now</b></td><td class="n"><b>'+money(bill)+'</b></td><td class="n green"><b>'+money(paid)+'</b></td><td class="n"><b class="'+(bal>0?'red':'green')+'">'+money(bal)+'</b></td></tr></table></div></div>'+
+    (plans.length?'<div class="card"><b>📅 Scheduled</b>'+plans.map(function(x){ var dd=Math.round((new Date(x.due_date)-Date.now())/86400000);
+      return '<div class="between line"><span>'+nice(x.due_date)+' · '+mi(x.method)+' '+esc(x.method||'')+(x.cheque_no?' #'+esc(x.cheque_no):'')+'<div class="m">'+(dd<0?'<span class="red">'+Math.abs(dd)+' days late</span>':dd+' days left')+'</div></span>'+
+        '<span><b>'+money(x.amount)+'</b> <button class="small sec" onclick="planPaid('+x.id+')">✅</button></span></div>'; }).join('')+'</div>':'')+
+    '<div class="row"><button onclick="payParty(\''+kind+'\',\''+esc(id)+'\',\''+esc(party.name)+'\','+Math.round(bal)+')">💵 Add payment</button>'+
+    '<button class="sec" onclick="planForm(\''+kind+'\',\''+esc(id)+'\',\''+esc(party.name)+'\','+Math.round(bal)+')">📅 Schedule</button>'+
+    '<button class="sec" onclick="printStatement(\''+esc(party.name)+'\','+esc(JSON.stringify(JSON.stringify(rows)))+')">🖨️</button></div>';
+}
+function payParty(kind,id,name,amt){
+  formPay();
+  setTimeout(function(){ if(el('p-k')) el('p-k').value=(kind==='Payable'?'Supplier Payment':'Customer Receipt');
+    if(el('p-party')) el('p-party').value=id; if(el('p-amt')) el('p-amt').value=amt>0?amt:''; },60);
+}
+
+/* ── 📅 Schedule ── */
+function planForm(kind,id,name,amt){
+  modal('<h3 style="margin:0 0 10px">📅 Schedule a payment</h3><div class="card">'+
+    '<label>Type</label><select id="pl-k">'+opts(['Payable','Receivable'],kind||'Payable')+'</select>'+
+    '<label>Party</label><select id="pl-party">'+opts(S.customers.map(function(c){return {v:c.id,t:'👤 '+c.name};}).concat(S.suppliers.map(function(s){return {v:s.id,t:'🏭 '+s.name};})),id||'','—')+'</select>'+
+    '<div class="row"><div><label>Amount</label><input id="pl-amt" inputmode="decimal" value="'+(amt>0?amt:'')+'"></div>'+
+    '<div><label>Due date</label><input id="pl-date" type="date" value="'+today()+'"></div></div>'+
+    '<div class="row"><div><label>Method</label><select id="pl-m">'+opts(METHODS.concat(['Cheque']))+'</select></div>'+
+    '<div><label>Cheque no. (if any)</label><input id="pl-chq"></div></div>'+
+    '<label>Note</label><input id="pl-note" placeholder="2nd instalment"></div>'+
+    '<button class="full" onclick="savePlan()">Save schedule</button>');
+}
+async function savePlan(){
+  if(!num('pl-amt')){ toast('Enter amount'); return; }
+  try{ await q('Schedule', db.from('payment_plan').insert({kind:val('pl-k'),party_id:val('pl-party')||null,
+      party_name:(S.customers.concat(S.suppliers).filter(function(x){return x.id===val('pl-party');})[0]||{}).name||null,
+      amount:num('pl-amt'),due_date:val('pl-date'),method:val('pl-m'),cheque_no:val('pl-chq')||null,note:val('pl-note')||null,created_by:S.staff.email}));
+    closeModal(); toast('📅 Scheduled'); MM='plan'; vMoney(); }catch(e){ fail(e); }
+}
+async function planPaid(id){
+  var p=(S.plans||[]).filter(function(x){return x.id===id;})[0];
+  try{ await q('Schedule', db.from('payment_plan').update({status:'Paid'}).eq('id',id)); toast('✅ Marked paid');
+    if(p) payParty(p.kind,p.party_id,p.name,p.amount); else vMoney(); }catch(e){ fail(e); }
+}
+async function planSnooze(id,days){
+  var p=(S.plans||[]).filter(function(x){return x.id===id;})[0]; if(!p) return;
+  var d=new Date(p.due_date); d.setDate(d.getDate()+days);
+  try{ await q('Schedule', db.from('payment_plan').update({due_date:d.toISOString().slice(0,10)}).eq('id',id)); toast('⏰ Moved by '+days+' days'); vMoney(); }catch(e){ fail(e); }
+}
+async function mPlan(){
+  var up=await q('Schedule', db.from('v_upcoming').select('*').order('due_date'));
+  S.plans=up;
+  var groups=[['Overdue','out'],['Today','low'],['This week','b'],['Later','']];
+  var inAmt=up.filter(function(x){return x.kind==='Receivable';}).reduce(function(a,x){return a+(+x.amount||0);},0);
+  var outAmt=up.filter(function(x){return x.kind==='Payable';}).reduce(function(a,x){return a+(+x.amount||0);},0);
+  el('mny').innerHTML='<div class="row" style="margin-bottom:10px"><button onclick="planForm()">📅 New schedule</button></div>'+
+    '<div class="kpis" style="grid-template-columns:repeat(2,1fr)">'+
+    kpi2('⬇️ To receive', k(inAmt), up.filter(function(x){return x.kind==='Receivable';}).length+' entries','linear-gradient(135deg,#14534a,#0e3b34)','')+
+    kpi2('⬆️ To pay', k(outAmt), up.filter(function(x){return x.kind==='Payable';}).length+' entries','linear-gradient(135deg,#b0645a,#8c4a42)','')+'</div>'+
+    groups.map(function(g){ var rows=up.filter(function(x){return x.bucket===g[0];});
+      if(!rows.length) return '';
+      return '<div class="sec-t">'+(g[0]==='Overdue'?'🔴 ':(g[0]==='Today'?'🟠 ':'📅 '))+g[0]+'</div>'+rows.map(function(x){
+        return '<div class="card" style="padding:12px"><div class="between"><b>'+esc(x.name||x.party_name||'—')+'</b><b class="'+(x.kind==='Payable'?'red':'green')+'">'+(x.kind==='Payable'?'− ':'+ ')+money(x.amount)+'</b></div>'+
+          '<div class="m">'+nice(x.due_date)+' · '+esc(x.kind)+' · '+mi(x.method)+' '+esc(x.method||'')+(x.cheque_no?' #'+esc(x.cheque_no):'')+(x.note?' · '+esc(x.note):'')+'</div>'+
+          '<div class="m '+(x.days_left<0?'red':'')+'">'+(x.days_left<0?Math.abs(x.days_left)+' days late':(x.days_left===0?'due today':x.days_left+' days left'))+'</div>'+
+          '<div class="row" style="margin-top:8px">'+tel(x.phone)+'<button class="small" onclick="planPaid('+x.id+')">✅ Paid</button>'+
+          '<button class="small sec" onclick="planSnooze('+x.id+',7)">⏰ +7d</button>'+
+          '<button class="small sec" onclick="tally(\''+x.kind+'\',\''+esc(x.party_id||'')+'\')">📄</button></div></div>'; }).join(''); }).join('')+
+    (up.length?'':'<div class="card m">Nothing scheduled — press "New schedule" to set a promised date</div>');
 }
 
 /* ── 📄 Payment statement ── */
@@ -1560,7 +1638,7 @@ async function mStmt(){
   rows.forEach(function(x){ bal+=x.in-x.out-x.fee; x.bal=bal; tin+=x.in; tout+=x.out+x.fee; if(x.meth) byM[x.meth]=(byM[x.meth]||0)+x.in-x.out; });
   S.stmtRows=rows;
   el('mny').innerHTML=chips('vMoney')+
-    '<div class="kpis">'+kpi2('⬇️ Money in', k(tin),'','linear-gradient(135deg,#3f7d6a,#2c5e4f)','')+kpi2('⬆️ Money out', k(tout),'','linear-gradient(135deg,#b0645a,#8c4a42)','')+'</div>'+
+    '<div class="kpis">'+kpi2('⬇️ Money in', k(tin),'','linear-gradient(135deg,#14534a,#0e3b34)','')+kpi2('⬆️ Money out', k(tout),'','linear-gradient(135deg,#b0645a,#8c4a42)','')+'</div>'+
     '<div class="card"><div class="between"><b>Net movement</b><b class="'+(tin-tout>=0?'green':'red')+'">'+money(tin-tout)+'</b></div>'+
     Object.keys(byM).map(function(m){ return '<div class="between line"><span>'+mi(m)+' '+esc(m)+'</span><b>'+money(byM[m])+'</b></div>'; }).join('')+'</div>'+
     '<div class="card" style="overflow-x:auto"><table><tr><th>Date</th><th>Details</th><th class="n">In</th><th class="n">Out</th><th class="n">Balance</th></tr>'+
@@ -1572,6 +1650,49 @@ function printPayStmt(){
   var rows=(S.stmtRows||[]).map(function(x){ return {d:x.d,t:x.icon+' '+x.t+' · '+x.who+(x.acc?' ('+x.acc+')':''),dr:x.out+x.fee,cr:x.in,bal:x.bal}; });
   printStatement('Payment statement · '+nice(range()[0])+' – '+nice(range()[1]), JSON.stringify(rows));
 }
+function printStatement(title, json){
+  var rows=JSON.parse(json), st=S.settings, bal=rows.length?rows[rows.length-1].bal:0;
+  var w=window.open('','_blank');
+  w.document.write('<html><head><meta charset="utf-8"><title>Statement · '+title+'</title><style>body{font:13px Inter,-apple-system,Arial,sans-serif;max-width:760px;margin:24px auto;padding:0 20px;color:#14201c}'+
+    'h1{margin:0;font-size:22px}table{width:100%;border-collapse:collapse;margin:18px 0}th{background:#0e2f2b;color:#fff;padding:8px;text-align:left;font-size:11px}td{padding:8px;border-bottom:1px solid #e4e9e4}.n{text-align:right}'+
+    '.tot{font-size:17px;font-weight:800;text-align:right;margin-top:8px}@media print{button{display:none}}</style></head><body>'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #14534a;padding-bottom:10px">'+
+    '<div><h1>'+esc(st.company_name||'LorVe')+'</h1><div style="color:#6d7c75;font-size:12px">'+esc([st.company_address,st.company_phone].filter(String).join(' · '))+'</div></div>'+
+    '<div style="text-align:right"><div style="font-size:18px;font-weight:800;color:#14534a">STATEMENT</div><div style="color:#6d7c75">'+esc(title)+'</div><div style="color:#6d7c75;font-size:11px">'+new Date().toLocaleDateString('en-GB')+'</div></div></div>'+
+    '<table><tr><th>Date</th><th>Details</th><th class="n">Bill</th><th class="n">Paid</th><th class="n">Balance</th></tr>'+
+    rows.map(function(r){ return '<tr><td>'+(r.d?nice(r.d):'—')+'</td><td>'+esc(r.t)+'</td><td class="n">'+(r.dr?money(r.dr):'')+'</td><td class="n">'+(r.cr?money(r.cr):'')+'</td><td class="n">'+money(r.bal)+'</td></tr>'; }).join('')+'</table>'+
+    '<div class="tot">Balance: '+money(bal)+'</div>'+
+    '<div style="text-align:center;margin:24px"><button onclick="print()" style="padding:12px 24px;border:0;border-radius:10px;background:#0e2f2b;color:#fff;font-size:15px">🖨️ Print / PDF</button></div></body></html>');
+  w.document.close();
+}
+async function trashIt(t,id){ if(!confirm(id+' — move to Trash?')) return;
+  try{ await q('Delete', db.rpc('to_trash',{p_table:t,p_id:id})); toast('🗑️ Moved to Trash'); vMoney(); }catch(e){ fail(e); } }
+function formPay(){
+  modal('<h3 style="margin:0 0 10px">Payment</h3><div class="card"><label>Type</label><select id="p-k">'+opts(['Customer Receipt','Supplier Payment','Courier Settlement','Refund','Other Income','Owner Withdrawal'])+'</select>'+
+    '<label>Order / Shipment ID (if any)</label><input id="p-doc" placeholder="ORD-00001 / IMP-00001">'+
+    '<label>Customer / Supplier</label><select id="p-party">'+opts(S.customers.map(function(c){return {v:c.id,t:'👤 '+c.name};}).concat(S.suppliers.map(function(s){return {v:s.id,t:'🏭 '+s.name};})),'','—')+'</select>'+
+    '<div class="row"><div><label>Amount (৳)</label><input id="p-amt" inputmode="decimal"></div><div><label>Method</label><select id="p-m" onchange="el(\'p-chqbox\').style.display=this.value===\'Cheque\'?\'block\':\'none\'">'+opts(METHODS.concat(['Cheque']))+'</select></div></div>'+
+    '<div id="p-chqbox" style="display:none"><div class="row"><div><label>Cheque no.</label><input id="p-chq"></div><div><label>Bank</label><input id="p-bank"></div></div></div>'+
+    '<div class="row"><div><label>Foreign amount</label><input id="p-fx" inputmode="decimal" oninput="if(num(\'p-fx\')&&num(\'p-rate\'))el(\'p-amt\').value=Math.round(num(\'p-fx\')*num(\'p-rate\'))"></div>'+
+    '<div><label>Rate</label><input id="p-rate" inputmode="decimal" placeholder="'+(S.settings.fx_usd||122)+'" oninput="if(num(\'p-fx\')&&num(\'p-rate\'))el(\'p-amt\').value=Math.round(num(\'p-fx\')*num(\'p-rate\'))"></div></div>'+
+    '<div class="row"><div><label>Account</label><select id="p-acc">'+opts(S.accounts.map(function(a){return a.name;}))+'</select></div><div><label>Date</label><input id="p-d" type="date" value="'+today()+'"></div></div>'+
+    '<label>Reference / instalment note</label><input id="p-ref" placeholder="2nd instalment"></div><button class="full" onclick="savePay()">Save</button>');
+}
+async function savePay(){ if(!num('p-amt')){ toast('Enter amount'); return; }
+  try{ var ref=val('p-ref')+(val('p-chq')?' · cheque '+val('p-chq')+(val('p-bank')?' ('+val('p-bank')+')':''):'');
+    await q('Payment', db.from('payments').insert({kind:val('p-k'),doc_id:val('p-doc')||null,party_id:val('p-party')||null,amount:num('p-amt'),method:val('p-m'),
+      account:val('p-acc'),pay_date:val('p-d'),reference:ref.trim()||null,fx_currency:num('p-fx')?'USD':null,fx_amount:num('p-fx')||null,fx_rate:num('p-rate')||null,received_by:S.staff.email}));
+    closeModal(); toast('✅ Payment saved'); vMoney(); }catch(e){ fail(e); } }
+function formExp(){
+  modal('<h3 style="margin:0 0 10px">Expense</h3><div class="card"><label>Category</label><select id="e-c">'+opts(S.expCats)+'</select>'+
+    '<label>Description</label><input id="e-d"><div class="row"><div><label>Amount</label><input id="e-a" inputmode="decimal"></div><div><label>Account</label><select id="e-acc">'+opts(S.accounts.map(function(a){return a.name;}))+'</select></div></div>'+
+    '<label>Date</label><input id="e-dt" type="date" value="'+today()+'"></div><button class="full" onclick="saveExp()">Save</button>');
+}
+async function saveExp(){ if(!num('e-a')){ toast('Enter amount'); return; }
+  try{ await q('Expense', db.from('expenses').insert({category:val('e-c'),description:val('e-d'),amount:num('e-a'),account:val('e-acc'),exp_date:val('e-dt'),entered_by:S.staff.email}));
+    closeModal(); toast('✅ Expense saved'); vMoney(); }catch(e){ fail(e); } }
+function formAcc(){ modal('<h3 style="margin:0 0 10px">New account</h3><div class="card"><label>Name</label><input id="a-n" placeholder="Nagad-01"><label>Type</label><select id="a-k">'+opts(['Cash','bKash','Nagad','Bank','Card'])+'</select><label>Opening balance</label><input id="a-o" inputmode="decimal" value="0"></div><button class="full" onclick="saveAcc()">Save</button>'); }
+async function saveAcc(){ try{ await q('Account', db.from('accounts').insert({name:val('a-n'),kind:val('a-k'),opening_balance:num('a-o')})); await loadMaster(); closeModal(); vMoney(); }catch(e){ fail(e); } }
 
 /* ═══════════════════ PEOPLE ═══════════════════ */
 var PT='c';
