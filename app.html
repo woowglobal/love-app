@@ -9,6 +9,11 @@
 <meta name="apple-mobile-web-app-title" content="LorVe">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="application-name" content="LorVe">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-192.png">
+<meta name="description" content="LorVe Business Control — sales, stock, imports and accounts.">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -219,6 +224,12 @@ nav button.mid.on::after{display:none}
     border:1px solid rgba(255,255,255,.85);box-shadow:0 18px 40px -22px rgba(14,32,28,.55),var(--emb-sm)}
   body{padding-bottom:calc(104px + env(safe-area-inset-bottom))}
 }
+
+.installbar{position:fixed;left:10px;right:10px;bottom:calc(96px + env(safe-area-inset-bottom));z-index:50;display:flex;gap:8px;align-items:center;
+  background:rgba(14,47,43,.95);color:#fff;padding:10px 12px;border-radius:16px;font-size:12.5px;box-shadow:0 18px 36px -18px rgba(0,0,0,.6);animation:toastIn .35s ease}
+.installbar span{flex:1}
+.installbar button{padding:7px 12px;font-size:12px}
+@media(min-width:760px){.installbar{max-width:520px;left:auto;right:20px}}
 /* ═══════════ Counter (POS) layout ═══════════ */
 .pos{display:grid;grid-template-columns:1fr;gap:12px}
 @media(min-width:900px){.pos{grid-template-columns:1.3fr 1fr;align-items:start}.pos .cart{position:sticky;top:78px}}
@@ -250,7 +261,7 @@ nav button.mid.on::after{display:none}
   <div style="text-align:center;margin-bottom:18px">
     <div style="font-size:28px;font-weight:800;letter-spacing:-.6px">LorVe</div>
     <div style="color:var(--sub);font-size:13px">Business Control</div>
-    <div style="color:var(--sub);font-size:11px;margin-top:4px">version 27</div>
+    <div style="color:var(--sub);font-size:11px;margin-top:4px">version 28</div>
   </div>
   <div class="card" id="lg-box">
     <label>Email</label><input id="lg-email" type="email" autocomplete="username">
@@ -267,7 +278,7 @@ nav button.mid.on::after{display:none}
 <!-- ═════════ APP ═════════ -->
 <div id="app" class="hide">
   <header>
-    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div><div class="who" style="opacity:.6">v27</div></div>
+    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div><div class="who" style="opacity:.6">v28</div></div>
     <button class="small sec" onclick="logout()">Logout</button>
   </header>
   <div class="pres" id="pres"></div>
@@ -2585,6 +2596,23 @@ async function backup(){
 }
 
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(function(){}); }
+var INSTALL=null;
+window.addEventListener('beforeinstallprompt',function(e){ e.preventDefault(); INSTALL=e; showInstall(); });
+function standalone(){ return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone; }
+function showInstall(){
+  if(standalone()) return;
+  try{ if(localStorage.getItem('lorve_noinstall')) return; }catch(e){}
+  var iOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
+  if(!INSTALL && !iOS) return;
+  var b=document.createElement('div');
+  b.className='installbar';
+  b.innerHTML='<span>📲 Add LorVe to your home screen'+(iOS?' — tap <b>Share ⬆︎</b> then <b>Add to Home Screen</b>':'')+'</span>'+
+    (INSTALL?'<button class="small" onclick="doInstall()">Install</button>':'')+
+    '<button class="small sec" onclick="this.parentNode.remove();try{localStorage.setItem(\'lorve_noinstall\',\'1\')}catch(e){}">✕</button>';
+  document.body.appendChild(b);
+}
+async function doInstall(){ if(!INSTALL) return; INSTALL.prompt(); await INSTALL.userChoice; INSTALL=null; var b=document.querySelector('.installbar'); if(b) b.remove(); }
+setTimeout(showInstall, 4000);
 start();
 </script>
 </body>
