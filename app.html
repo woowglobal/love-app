@@ -190,6 +190,13 @@ input:focus,select:focus,textarea:focus{background:#fff;border-color:var(--brass
 label{letter-spacing:.7px;color:#7d8a84}
 .kpi{box-shadow:0 18px 34px -20px rgba(11,38,33,.6),inset 1px 1px 0 rgba(255,255,255,.22),inset -1px -1px 0 rgba(0,0,0,.12)}
 
+
+.item.on{border:1px solid var(--brass);box-shadow:var(--emb-sm),0 0 0 3px rgba(200,169,106,.16)}
+.track{display:flex;gap:4px;margin-top:14px}
+.tstep{flex:1;text-align:center}
+.tstep span{display:block;height:5px;border-radius:9px;background:var(--line)}
+.tstep.done span{background:linear-gradient(90deg,#14534a,#c8a96a)}
+.tstep .m{font-size:9.5px;margin-top:4px}
 /* ═══════════ Counter (POS) layout ═══════════ */
 .pos{display:grid;grid-template-columns:1fr;gap:12px}
 @media(min-width:900px){.pos{grid-template-columns:1.3fr 1fr;align-items:start}.pos .cart{position:sticky;top:78px}}
@@ -221,7 +228,7 @@ label{letter-spacing:.7px;color:#7d8a84}
   <div style="text-align:center;margin-bottom:18px">
     <div style="font-size:28px;font-weight:800;letter-spacing:-.6px">LorVe</div>
     <div style="color:var(--sub);font-size:13px">Business Control</div>
-    <div style="color:var(--sub);font-size:11px;margin-top:4px">version 21 · Counter</div>
+    <div style="color:var(--sub);font-size:11px;margin-top:4px">version 22 · Orders</div>
   </div>
   <div class="card" id="lg-box">
     <label>Email</label><input id="lg-email" type="email" autocomplete="username">
@@ -238,7 +245,7 @@ label{letter-spacing:.7px;color:#7d8a84}
 <!-- ═════════ APP ═════════ -->
 <div id="app" class="hide">
   <header>
-    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div><div class="who" style="opacity:.6">v21</div></div>
+    <div><div class="co" id="h-co">LorVe</div><div class="who" id="h-who"></div><div class="who" style="opacity:.6">v22</div></div>
     <button class="small sec" onclick="logout()">Logout</button>
   </header>
   <div class="pres" id="pres"></div>
@@ -761,62 +768,122 @@ async function editOrder(id){
   }catch(e){ fail(e); }
 }
 
-/* ═══════════════════ ORDERS ═══════════════════ */
+/* ═══════════════════ ORDERS · storefront view ═══════════════════ */
+var OD={ q:'', status:'all', cust:null, sel:null, rows:[], dl:{} };
+var OSTAT=[['all','All'],['Pending','🕒 Pending'],['Confirmed','✅ Confirmed'],['Packed','📦 Packed'],['Shipped','🚚 Shipped'],['Delivered','🏁 Delivered'],['due','🔴 Has due'],['Returned','↩️ Returned / Cancelled']];
+function ordPill(s){ return s==='Delivered'?'ok':(['Cancelled','Returned'].indexOf(s)>=0?'out':(s==='Pending'?'low':'b')); }
+
 async function vOrders(){
-  el('view').innerHTML='<div class="card"><input id="oq" placeholder="🔍 Order / name / phone" oninput="clearTimeout(S.ot);S.ot=setTimeout(loadOrders,300)"></div><div id="ol" class="m">Loading…</div>';
-  loadOrders();
-}
-async function loadOrders(){
-  if(!el('ol')) return;
+  el('view').innerHTML='<div id="ob"><span class="loading"></span><span class="loading"></span></div>';
   try{
-    var s=val('oq'), qq=db.from('v_orders').select('id,order_date,customer_name,customer_phone,status,grand_total,due,invoice_no').order('created_at',{ascending:false}).limit(50);
-    if(s) qq=qq.or('id.ilike.%'+s+'%,customer_name.ilike.%'+s+'%,customer_phone.ilike.%'+s+'%');
-    var rows=await q('Orders', qq);
-    if(!el('ol')) return;
-    el('ol').innerHTML = rows.length ? rows.map(function(o){
-      var c=o.status==='Delivered'?'ok':(['Cancelled','Returned'].indexOf(o.status)>=0?'out':(o.status==='Pending'?'low':'b'));
-      return '<div class="item" onclick="openOrder(\''+o.id+'\')"><div class="b"><div class="between"><span class="t">'+esc(o.customer_name||o.id)+'</span><b>'+money(o.grand_total)+'</b></div>'+
-        '<div class="between"><span class="m">'+o.id+' · '+nice(o.order_date)+'</span><span class="pill '+c+'">'+esc(o.status)+'</span></div>'+
-        (+o.due>0?'<div class="m red">Due '+money(o.due)+'</div>':'')+'</div></div>'; }).join('') : '<div class="card m">No orders</div>';
-  }catch(e){ if(el('ol')) el('ol').innerHTML='<div class="err">'+esc(e.message)+'</div>'; else toast('⚠️ '+e.message); }
+    var res=await Promise.all([ q('Orders', db.from('v_orders').select('*').order('created_at',{ascending:false}).limit(300)),
+      q('Delivery', db.from('deliveries').select('order_id,courier,tracking_no,status,delivered_date')) ]);
+    OD.rows=res[0]; OD.dl={}; res[1].forEach(function(d){ OD.dl[d.order_id]=d; });
+    drawOrders();
+  }catch(e){ if(el('ob')) el('ob').innerHTML='<div class="err">'+esc(e.message)+'</div>'; }
 }
-async function openOrder(id){
+function ordFiltered(){
+  var s=(OD.q||'').toLowerCase();
+  return OD.rows.filter(function(o){
+    if(OD.cust && o.customer_id!==OD.cust) return false;
+    if(OD.status==='due'){ if(!(o.due>0)) return false; }
+    else if(OD.status==='Returned'){ if(['Returned','Cancelled'].indexOf(o.status)<0) return false; }
+    else if(OD.status!=='all' && o.status!==OD.status) return false;
+    return !s || ((o.customer_name||'')+' '+(o.customer_phone||'')+' '+o.id+' '+(o.invoice_no||'')).toLowerCase().indexOf(s)>=0;
+  });
+}
+function custSummary(){
+  var by={};
+  OD.rows.forEach(function(o){
+    var c=by[o.customer_id]||(by[o.customer_id]={id:o.customer_id,name:o.customer_name||o.customer_id,phone:o.customer_phone,n:0,spent:0,due:0,last:''});
+    if(['Cancelled','Returned'].indexOf(o.status)<0){ c.n++; c.spent+=+o.grand_total||0; }
+    c.due+=+o.due>0?+o.due:0;
+    if(!c.last || o.order_date>c.last) c.last=o.order_date;
+  });
+  return Object.keys(by).map(function(k){return by[k];}).sort(function(a,b){ return String(b.last).localeCompare(String(a.last)); });
+}
+function drawOrders(){
+  if(!el('ob')) return;
+  var all=ordFiltered(), cust=custSummary();
+  var live=OD.rows.filter(function(o){return ['Cancelled','Returned'].indexOf(o.status)<0;});
+  var totDue=OD.rows.reduce(function(a,o){return a+(o.due>0?+o.due:0);},0);
+  var pend=OD.rows.filter(function(o){return o.status==='Pending';}).length;
+  var s=(OD.q||'').toLowerCase();
+  var cl=cust.filter(function(c){ return !s||((c.name||'')+' '+(c.phone||'')).toLowerCase().indexOf(s)>=0; });
+  el('ob').innerHTML=
+    '<div class="kpis" style="grid-template-columns:repeat(4,1fr)">'+
+      kpi2('🧾 Orders', live.length, cust.length+' customers','linear-gradient(135deg,#14534a,#0e3b34)','')+
+      kpi2('💰 Value', k(live.reduce(function(a,o){return a+(+o.grand_total||0);},0)),'','linear-gradient(135deg,#4b5d73,#34465a)','')+
+      kpi2('🔴 Due', k(totDue),'','linear-gradient(135deg,#b0645a,#8c4a42)','')+
+      kpi2('🕒 Pending', pend,'to confirm','linear-gradient(135deg,#b39163,#8c6f45)','')+'</div>'+
+    '<div class="card" style="padding:12px"><input id="oq" placeholder="🔍 Customer, phone, order or invoice no." value="'+esc(OD.q)+'" oninput="OD.q=this.value;drawOrders()">'+
+    '<div class="chips" style="margin-top:8px">'+OSTAT.map(function(x){ return '<button class="'+(OD.status===x[0]?'on':'')+'" onclick="OD.status=\''+x[0]+'\';OD.sel=null;drawOrders()">'+x[1]+'</button>'; }).join('')+'</div></div>'+
+    '<div class="pos">'+
+    '<div class="shelf"><div class="sec-t">Customers</div>'+
+      '<div class="item'+(OD.cust?'':' on')+'" onclick="OD.cust=null;OD.sel=null;drawOrders()"><div class="thumb">🗂️</div><div class="b"><div class="between"><span class="t">All customers</span><b>'+OD.rows.length+'</b></div><div class="m">every order</div></div></div>'+
+      cl.map(function(c){ return '<div class="item'+(OD.cust===c.id?' on':'')+'" onclick="OD.cust=\''+c.id+'\';OD.sel=null;drawOrders()">'+
+        '<div class="thumb" style="border-radius:50%;background:linear-gradient(135deg,#8fb3a0,#14534a);color:#fff;font-weight:800;font-size:14px">'+esc(initials(c.name))+'</div>'+
+        '<div class="b"><div class="between"><span class="t">'+esc(c.name)+'</span><b>'+money(c.spent)+'</b></div>'+
+        '<div class="between"><span class="m">'+c.n+' orders · '+(c.last?nice(c.last):'')+'</span>'+(c.due>0?'<span class="pill out">'+money(c.due)+'</span>':'')+'</div></div></div>'; }).join('')+
+      (cl.length?'':'<div class="card m">No customers found</div>')+'</div>'+
+    '<div class="cart" id="opane"></div></div>';
+  drawPane();
+}
+function drawPane(){
+  if(!el('opane')) return;
+  if(OD.sel){ orderDetail(OD.sel); return; }
+  var rows=ordFiltered();
+  var head=OD.cust?(custSummary().filter(function(c){return c.id===OD.cust;})[0]||{}).name:'Recent orders';
+  el('opane').innerHTML='<div class="between" style="margin:0 4px 8px"><b>'+esc(head)+'</b><span class="m">'+rows.length+' orders</span></div>'+
+    (rows.length?rows.slice(0,60).map(function(o){ var d=OD.dl[o.id];
+      return '<div class="item" onclick="OD.sel=\''+o.id+'\';drawPane()"><div class="thumb">'+(o.status==='Delivered'?'🏁':(o.status==='Shipped'?'🚚':'🧾'))+'</div>'+
+        '<div class="b"><div class="between"><span class="t">'+esc(o.invoice_no||o.id)+'</span><b>'+money(o.grand_total)+'</b></div>'+
+        '<div class="between"><span class="m">'+esc(o.customer_name||'')+' · '+nice(o.order_date)+'</span><span class="pill '+ordPill(o.status)+'">'+esc(o.status)+'</span></div>'+
+        (o.due>0?'<div class="m red">Due '+money(o.due)+(d&&d.tracking_no?' · '+esc(d.courier)+' '+esc(d.tracking_no):'')+'</div>':(d&&d.tracking_no?'<div class="m">'+esc(d.courier)+' · '+esc(d.tracking_no)+'</div>':''))+
+        '</div></div>'; }).join(''):'<div class="card m">No orders here</div>');
+}
+async function orderDetail(id){
+  el('opane').innerHTML='<div class="card m"><span class="loading"></span></div>';
   try{
-    var o=await q('Orders', db.from('v_orders').select('*').eq('id',id).single());
-    var it=await q('Lines', db.from('order_items').select('*').eq('order_id',id));
-    var pay=await q('Payments', db.from('payments').select('*').eq('doc_id',id).order('created_at'));
-    var dl=await q('Delivery', db.from('deliveries').select('*').eq('order_id',id));
-    modal('<div class="between"><h3 style="margin:0">'+esc(o.customer_name||'')+'</h3><span class="pill b">'+esc(o.status)+'</span></div>'+
-      '<div class="m" style="margin-bottom:10px">'+o.id+' · '+nice(o.order_date)+' · '+esc(o.customer_phone||'')+'</div>'+
-      '<div class="card"><table><tr><th>Product</th><th class="n">Qty</th><th class="n">Total</th></tr>'+it.map(function(l){
-        return '<tr><td>'+esc(prodName(l.sku))+'</td><td class="n">'+l.qty+'</td><td class="n">'+money(l.qty*l.unit_price)+'</td></tr>';}).join('')+'</table>'+
-      '<div class="between" style="margin-top:8px"><span class="m">Total</span><b>'+money(o.grand_total)+'</b></div>'+
-      '<div class="between"><span class="m">Paid</span><span>'+money(o.paid)+'</span></div>'+
-      '<div class="between"><b>Due</b><b class="'+(o.due>0?'red':'green')+'">'+money(o.due)+'</b></div>'+
-      (isAdmin()?'<div class="between"><span class="m">Profit</span><b class="green">'+money(o.profit)+'</b></div>':'')+'</div>'+
-      (pay.length?'<div class="sec-t">Payments</div>'+pay.map(function(p){return '<div class="card" style="padding:10px"><div class="between"><span>'+esc(p.method||'')+' '+esc(p.reference||'')+'</span><b>'+money(p.amount)+'</b></div><div class="m">'+nice(p.pay_date)+'</div></div>';}).join(''):'')+
-      (dl.length?'<div class="sec-t">Delivery</div>'+dl.map(function(d){return '<div class="card" style="padding:10px"><div class="between"><span>'+esc(d.courier)+' '+esc(d.tracking_no||'')+'</span><span class="pill">'+esc(d.status)+'</span></div></div>';}).join(''):'')+
+    var o=OD.rows.filter(function(x){return x.id===id;})[0]||await q('Order', db.from('v_orders').select('*').eq('id',id).single());
+    var res=await Promise.all([ q('Lines', db.from('order_items').select('*').eq('order_id',id)),
+      q('Payments', db.from('payments').select('*').eq('doc_id',id).order('created_at')),
+      q('Delivery', db.from('deliveries').select('*').eq('order_id',id).order('created_at')) ]);
+    var it=res[0], pay=res[1], dl=res[2], d=dl[dl.length-1];
+    var steps=['Pending','Confirmed','Packed','Shipped','Delivered'], at=steps.indexOf(o.status);
+    el('opane').innerHTML=
+      '<div class="card"><div class="between"><button class="small sec" onclick="OD.sel=null;drawPane()">‹ Back</button><span class="pill '+ordPill(o.status)+'">'+esc(o.status)+'</span></div>'+
+      '<div style="margin-top:10px"><div class="t" style="font-size:17px">'+esc(o.invoice_no||o.id)+'</div>'+
+      '<div class="m">'+esc(o.customer_name||'')+' · '+esc(o.customer_phone||'')+' · '+nice(o.order_date)+'</div></div>'+
+      '<div class="track">'+steps.map(function(s,idx){ return '<div class="tstep'+(idx<=at&&at>=0?' done':'')+'"><span></span><div class="m">'+s+'</div></div>'; }).join('')+'</div></div>'+
+      '<div class="card">'+it.map(function(l){ var pr=S.products.filter(function(x){return x.sku===l.sku;})[0]||{};
+        return '<div class="cline">'+(pr.image_url?'<img src="'+esc(pr.image_url)+'">':'<div class="ph">📦</div>')+
+          '<div style="flex:1;min-width:0"><div class="t" style="font-size:14px">'+esc(prodName(l.sku))+'</div><div class="m">'+l.qty+' × '+money(l.unit_price)+'</div></div>'+
+          '<b>'+money(l.qty*l.unit_price)+'</b></div>'; }).join('')+
+        '<div class="between" style="margin-top:10px"><span class="m">Subtotal</span><span>'+money(o.items_total)+'</span></div>'+
+        (+o.discount?'<div class="between"><span class="m">Discount</span><span>-'+money(o.discount)+'</span></div>':'')+
+        (+o.delivery_charge?'<div class="between"><span class="m">Delivery</span><span>'+money(o.delivery_charge)+'</span></div>':'')+
+        '<div class="between" style="font-size:18px;margin-top:4px"><b>Total</b><b>'+money(o.grand_total)+'</b></div>'+
+        '<div class="between"><span class="m">Paid</span><span class="green">'+money(o.paid)+'</span></div>'+
+        '<div class="between"><b>Due</b><b class="'+(o.due>0?'red':'green')+'">'+money(o.due)+'</b></div>'+
+        (isAdmin()?'<div class="between"><span class="m">Profit</span><b class="green">'+money(o.profit)+'</b></div>':'')+'</div>'+
+      (pay.length?'<div class="card"><b>Payments</b>'+pay.map(function(x){ return '<div class="between line"><span>'+mi(x.method)+' '+esc(x.method||'')+' '+esc(x.reference||'')+'<div class="m">'+nice(x.pay_date)+'</div></span><b class="green">'+money(x.amount)+'</b></div>'; }).join('')+'</div>':'')+
+      (dl.length?'<div class="card"><b>Delivery</b>'+dl.map(function(x){ return '<div class="between line"><span>🚚 '+esc(x.courier||'')+' '+esc(x.tracking_no||'')+'<div class="m">COD '+money(x.cod_amount)+(x.delivered_date?' · delivered '+nice(x.delivered_date):'')+'</div></span><span class="pill '+(x.status==='Delivered'?'ok':'b')+'">'+esc(x.status)+'</span></div>'; }).join('')+'</div>':'')+
       '<div class="card"><label>Status</label><div class="row"><select id="od-st">'+opts(ORDER_STATUS,o.status)+'</select><button class="sec" style="flex:0 0 80px" onclick="setStatus(\''+id+'\')">Save</button></div>'+
-      '<label>Take payment</label><div class="row"><input id="od-amt" inputmode="decimal" placeholder="'+Math.max(0,Math.round(o.due))+'"><select id="od-m">'+opts(METHODS,'bKash')+'</select></div>'+
-      '<div class="row" style="margin-top:6px"><select id="od-acc">'+opts(S.accounts.map(function(a){return a.name;}))+'</select><input id="od-ref" placeholder="TrxID"><button class="sec" style="flex:0 0 80px" onclick="payOrder(\''+id+'\',\''+o.customer_id+'\')">Paid</button></div>'+
-      (!dl.length?'<label>Hand to courier</label><div class="row"><select id="od-c">'+opts(COURIERS)+'</select><input id="od-t" placeholder="tracking"><button class="sec" style="flex:0 0 80px" onclick="ship(\''+id+'\','+Math.max(0,o.due)+')">Send</button></div>':'')+
-      '</div><div class="row"><button onclick="printInvoice(\''+id+'\')">🧾 Invoice</button>'+
-      '<button class="wa" onclick="waOrder(\''+id+'\')">💬 WhatsApp</button></div>');
-  }catch(e){ fail(e); }
+      (o.due>0?'<label>Take payment</label><div class="row"><input id="od-amt" inputmode="decimal" placeholder="'+Math.max(0,Math.round(o.due))+'"><select id="od-m">'+opts(METHODS,'bKash')+'</select></div>'+
+        '<div class="row" style="margin-top:6px"><select id="od-acc">'+opts(S.accounts.map(function(a){return a.name;}))+'</select><input id="od-ref" placeholder="TrxID"><button class="sec" style="flex:0 0 80px" onclick="payOrder(\''+id+'\',\''+o.customer_id+'\')">Save</button></div>':'')+
+      (!dl.length?'<label>Hand to courier</label><div class="row"><select id="od-c">'+opts(COURIERS)+'</select><input id="od-t" placeholder="tracking"><button class="sec" style="flex:0 0 80px" onclick="ship(\''+id+'\','+Math.max(0,o.due)+')">Send</button></div>':'')+'</div>'+
+      '<div class="row"><button onclick="invoiceScreen(\''+id+'\')">🧾 Invoice</button><button class="sec" onclick="printInvoice(\''+id+'\')">🖨️</button>'+
+      '<button class="wa" onclick="waInvoice(\''+id+'\')">💬</button></div>';
+  }catch(e){ el('opane').innerHTML='<div class="err">'+esc(e.message)+'</div>'; }
 }
-async function setStatus(id){ try{ await q('Status', db.from('orders').update({status:val('od-st')}).eq('id',id)); toast('✅ Updated'); closeModal(); refreshProducts(); if(S.view==='orders') loadOrders(); }catch(e){ fail(e); } }
+async function setStatus(id){ try{ await q('Status', db.from('orders').update({status:val('od-st')}).eq('id',id)); toast('✅ Updated'); refreshProducts(); vOrders(); }catch(e){ fail(e); } }
 async function payOrder(id,cust){ if(!num('od-amt')){ toast('Enter amount'); return; }
-  try{ await q('Payments', db.from('payments').insert({kind:'Customer Receipt',doc_id:id,party_id:cust,method:val('od-m'),account:val('od-acc'),amount:num('od-amt'),reference:val('od-ref'),received_by:S.staff.email}));
-    toast('✅ Payment recorded'); openOrder(id); }catch(e){ fail(e); } }
+  try{ await q('Payment', db.from('payments').insert({kind:'Customer Receipt',doc_id:id,party_id:cust,method:val('od-m'),account:val('od-acc'),amount:num('od-amt'),reference:val('od-ref'),received_by:S.staff.email}));
+    toast('✅ Payment received'); vOrders(); }catch(e){ fail(e); } }
 async function ship(id,due){ try{ await q('Delivery', db.from('deliveries').insert({order_id:id,courier:val('od-c'),tracking_no:val('od-t'),cod_amount:due}));
-  await db.from('orders').update({status:'Shipped'}).eq('id',id); toast('🚚 Shipped'); openOrder(id); }catch(e){ fail(e); } }
-async function waOrder(id){
-  try{ var o=await q('Orders', db.from('v_orders').select('*').eq('id',id).single());
-    var it=await q('Lines', db.from('order_items').select('sku,qty,unit_price').eq('order_id',id));
-    var t='Assalamu Alaikum '+(o.customer_name||'')+',\nYour order '+id+' ✅\n\n'+it.map(function(l){return '• '+prodName(l.sku)+' × '+l.qty+' = '+money(l.qty*l.unit_price);}).join('\n')+
-      '\n\nTotal: '+money(o.grand_total)+'\nPaid: '+money(o.paid)+'\nDue: '+money(o.due)+'\n\nThank you — '+(S.settings.company_name||'LorVe');
-    openWA(o.customer_phone,t); }catch(e){ fail(e); }
-}
+  await db.from('orders').update({status:'Shipped'}).eq('id',id); toast('🚚 Shipped'); vOrders(); }catch(e){ fail(e); } }
+function openOrder(id){ go('orders'); setTimeout(function(){ OD.sel=id; drawPane(); },400); }
 
 /* ═══════════════════ STOCK ═══════════════════ */
 async function vStock(){
